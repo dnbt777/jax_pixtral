@@ -3,11 +3,26 @@
 <img width="919" height="813" alt="image" src="https://github.com/user-attachments/assets/a9734d91-9028-42f5-ae75-8cad42d46f23" />
 
 
+
+# features
+- live chat (supports images, commands)
+- LoRA batch training and inferencing (including in chat)
+- simple API for completions (get_completions(...))
+
+
 # what is this?
 
 This is a VLM inference/training library made for fun + learning + to do VLM/LLM experiments in jax
 
+It is mostly from scratch, but not 100%. Besides jax, it uses:
+- pillow/opencv: image processing
+- regex: text processing (for the tokenizer)
+- einops: makes the code easier to read and reduces bugs
+- safetensors: load/save params
+
 It's not perfect by any means, and improvement suggestions/feedback are very welcome
+
+
 
 
 
@@ -46,7 +61,7 @@ This was tested on an A40 on runpod in the EU-SE region with the pytorch cuda12.
 
 
 # known bugs
-- when streaming completions, emojis dont render properly (see the header img in this readme)
+- when streaming completions (i.e. in the chat), emojis dont render properly (see the header img in this readme)
 - single-batch tok/sec is low (7tok/sec on an A40)
 - OOM for ~4+ images in the chat
 
