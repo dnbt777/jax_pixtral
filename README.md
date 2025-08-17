@@ -1,7 +1,18 @@
-# jax_pixtral
-Pixtral in jax from scratch
+# Pixtral in jax from scratch
 
-# setup
+<img width="919" height="813" alt="image" src="https://github.com/user-attachments/assets/a9734d91-9028-42f5-ae75-8cad42d46f23" />
+
+
+# what is this?
+
+This is a VLM inference/training library made for fun + learning + to do VLM/LLM experiments in jax
+
+It's not perfect by any means, and improvement suggestions/feedback are very welcome
+
+
+
+
+# install/setup
 
 Clone the repo and run setup.sh 
 
@@ -13,22 +24,43 @@ chmod +x setup.sh
 ```
 
 setup.sh:
-    downloads and installs uv
-    downloads pixtral weights from hf
-    syncs uv (installs necessary packages)
+- downloads and installs uv
+- downloads pixtral weights from hf
+- syncs uv (installs necessary packages)
 
 
 
 # run
 from here, you can run/modify the following example scripts:
-    scripts/run_chat.py
-    scripts/run_inference.py
-    scripts/run_batch_inference.py
-    scripts/run_lora_training.py
-    scripts/run_lora_inference.py
+- scripts/run_chat.py
+- scripts/run_inference.py
+- scripts/run_batch_inference.py
+- scripts/run_lora_training.py
+- scripts/run_lora_inference.py
+
 
 
 # environment
-
 This was tested on an A40 on runpod in the EU-SE region with the pytorch cuda12.4 pod.
+
+
+
+# known bugs
+- when streaming completions, emojis dont render properly (see the header img in this readme)
+- single-batch tok/sec is low (7tok/sec on an A40)
+- OOM for ~4+ images in the chat
+
+
+# features todo
+- add optimizers (adam, muon)
+- add more lora types (such as mlp, embeddings, etc)
+- add batch data loading from json files
+- 
+
+
+# optimizations todo
+- currently re-does the entire prefill on each new chat message
+- general profiling
+
+
 
