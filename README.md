@@ -1,6 +1,6 @@
 # Pixtral in jax from scratch
 
-<img width="919" height="813" alt="image" src="https://github.com/user-attachments/assets/a9734d91-9028-42f5-ae75-8cad42d46f23" />
+<img height="500" alt="image" src="https://github.com/user-attachments/assets/a9734d91-9028-42f5-ae75-8cad42d46f23" />
 
 
 
