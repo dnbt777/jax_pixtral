@@ -53,7 +53,7 @@ decoder = codecs.getincrementaldecoder("latin-1")()
 
 
 # splits a string, keeps the delimiter
-# keep_split("how cool") => ["how", " ", "cool"]
+# keep_split("how cool", " ") => ["how", " ", "cool"]
 def keep_split(
     string: str,
     delimiter: str
@@ -256,6 +256,7 @@ def chat(
             if verbose: print_color(f"Loaded params in {time.time() - load_start:.2f}s", color=color_grey)
             params_loaded = True
             # apply loras
+            lora_params = None
             if lora_path:
                 lora_params = load_lora("loras/test.safetensors")
                 #pixtral_params = apply_lora(pixtral_params, lora_params)
@@ -422,5 +423,6 @@ def _get_completions(
     log("generation duration", duration)
     log("tok/sec", (tokens_generated - 2*prompt_count)/duration) # dont count the 2 tokens generated during prefill + jit
     return [decode(completion_tokens) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
+
 
 
