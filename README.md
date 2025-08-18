@@ -1,4 +1,4 @@
-# Pixtral in jax from scratch
+# Pixtral in jax from scratch (WIP)
 
 ## features
 - live chat (supports images, commands)
