@@ -33,8 +33,7 @@ Clone the repo and run setup.sh
 ```
 git clone https://github.com/dnbt777/jax_pixtral
 cd jax_pixtral
-chmod +x setup.sh
-./setup.sh
+./setup.sh [huggingface_key_for_downloading_pixtral_weights]
 ```
 
 setup.sh:
@@ -43,21 +42,42 @@ setup.sh:
 - syncs uv (installs necessary packages)
 
 
+### Manual setup (if you dont want to run ./setup.sh):
+
+1. install uv and sync packages
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync
+```
+
+2. Download pixtral weights+config from huggingface (~25GB)
+```
+HF_HOME="./pixtral"
+uv run hf download mistralai/Pixtral-12B-2409 --local-dir ./pixtral --token "[hf token with read access]"
+```
+
+
+
 
 ## run
 from here, you can run/modify the following example scripts:
-- scripts/run_chat.py
-- scripts/run_inference.py
-- scripts/run_batch_inference.py
-- scripts/run_lora_training.py
-- scripts/run_lora_inference.py
+- run_chat.py
+- run_inference.py
+- run_batch_inference.py
+- run_lora_training.py
+- run_lora_inference.py
 
 
 
 ## environment
-This was tested on an A40 on runpod in the EU-SE-1 region with the pytorch cuda12.4 pod.
+This was tested in the following environment:
+- runpod A40, EU-SE-1 region, with the pytorch cuda12.4 template and 60GB storage volume
 
-This costs $0.40/hr if you would like to mimic this exact setup.
+This costs ~$0.40/hr if you would like to mimic this exact setup.
+
+Why use a 60GB volume?
+- The default size doesn't have enough storage to download the pixtral weights
+- Both "git lfs clone" and "huggingface-cli download" duplicate the weights while downloading.
 
 
 
@@ -84,6 +104,7 @@ This costs $0.40/hr if you would like to mimic this exact setup.
 - hardcoding params instead of loading from params.json
     - Does not matter
     - I will not fix this until I decide to support other pixtral models or support training from scratch
+
 
 
 
