@@ -1,35 +1,44 @@
-# run_inference.py
-from inference import get_completion
+###
+### run_lora_inference.py
+### --- runs inference on a single example prompt (context)
+###
 
-prompt = "Describe the contents of each image. One sentence per image (if there are more than one)." 
-url_1 = "../images/chess.png"
-url_2 = "../images/image-1.png" # gqa pic
-url_3 = "../images/bed.jpg"
-messages = [
-  {
-      "role":
-      "user",
-      "content": [
-          {
-              "type": "image_url",
-              "image_url": {
-                  "url": url_3
-              }
-          },
-          {
-              "type": "image_url",
-              "image_url": {
-                  "url": url_1
-              }
-          },
-          {
-              "type": "text",
-              "text": prompt
-          },
-      ],
-  },
+from jax_pixtral.inference import get_completion
+
+
+
+# create prompt with images (context)
+prompt = "For each image, write one sentence describing its contents." 
+chess_image = "images/chess.png"
+text_image = "images/gqa.png"
+highres_image = "images/bed.jpg"
+context = [
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "image_url",
+                "image_url": { "url": chess_image }
+            },
+            {
+                "type": "image_url",
+                "image_url": { "url": text_image }
+            },
+            {
+                "type": "image_url",
+                "image_url": { "url": highres_image }
+            },
+            {
+                "type": "text",
+                "text": prompt
+            },
+        ],
+    },
 ]
 
 
-completion = get_completion(messages, max_tokens=64, temp=0.0)#, lora_path="loras/test.safetensors")
+
+# run inference on prompt
+completion = get_completion(context, max_tokens=256, temp=0.0)
+
 print(completion)

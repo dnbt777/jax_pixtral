@@ -6,27 +6,27 @@ import jax.numpy as jnp
 import jax.random as jrand
 
 ## load params
-from load_model import load_params, fast_load_params
-from forward_common import encode, decode, tokenize_messages_dict
+from jax_pixtral.load_model import load_params, fast_load_params
+from jax_pixtral.forward_common import encode, decode, tokenize_messages_dict
 
-from forward_training import load_lora, LoRA
+from jax_pixtral.forward_training import load_lora, LoRA
 
 # typing
 from typing import Tuple, List, Optional
-from model_types import PixtralModel
+from jax_pixtral.model_types import PixtralModel
 
 # logging
 import time
 
 # chat formatting
 from PIL import Image
-from display_common import *
+from jax_pixtral.display_common import *
 from pprint import pprint # pretty debug outputs
 import codecs # used for streaming unicode (an emoji is >1 tokens - breaks if printed token by token)
 
 # model inferencing (prefill + kvcache)
-from forward_prefill import inference_prefill
-from forward_cached import inference_cached
+from jax_pixtral.forward_prefill import inference_prefill
+from jax_pixtral.forward_cached import inference_cached
 
 
 
@@ -34,7 +34,7 @@ left_bracket_token = "<<"
 right_bracket_token = ">>"
 
 HELP_MESSAGE = f"""
-Example prompt: "This is a prompt. Here {left_bracket_token}../images/image.png{right_bracket_token} is a picture. Please describe it."
+Example prompt: "This is a prompt. Here {left_bracket_token}./images/image.png{right_bracket_token} is a picture. Please describe it."
 
 ## Commands ##
 /help                       displays this message
@@ -189,7 +189,7 @@ def chat(
     ):
     params_loaded = False
 
-    load_and_show_image("../logo.png", height=16, resample=Image.NEAREST) # if alpha ..
+    load_and_show_image("./jax_logo.png", height=16, resample=Image.NEAREST) # if alpha ..
     if int(time.time()) % 2 == 7:
         _j = highlight_string("j", color_jax_blue_light)
         _a = highlight_string("a", color_jax_green_light)

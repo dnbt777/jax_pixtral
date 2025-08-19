@@ -1,4 +1,4 @@
-# Pixtral in jax from scratch
+# Pixtral in jax from scratch (WIP)
 
 ## features
 - live chat (supports images, commands)
@@ -14,7 +14,7 @@
 This is a VLM inference/training library made for fun + learning + to do VLM/LLM experiments in jax
 
 It is mostly from scratch, but not 100%. Besides jax, it uses:
-- pillow/opencv: image processing
+- pillow: image processing
 - regex: text processing (for the tokenizer)
 - einops: makes the code easier to read and reduces bugs
 - safetensors: load/save params
@@ -76,6 +76,18 @@ This costs $0.40/hr if you would like to mimic this exact setup.
 ## optimizations todo
 - currently re-does the entire prefill on each new chat message
 - general profiling
+
+
+## codebase style choices
+- values/functions comment at the top of files:
+    - it seems useful to be able to read a map of the code before reading the code.
+- hardcoding params instead of loading from params.json
+    - Does not matter
+    - I will not fix this until I decide to support other pixtral models or support training from scratch
+
+
+
+
 
 
 

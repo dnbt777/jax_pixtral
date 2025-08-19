@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from safetensors.numpy import load_file
 from safetensors import safe_open
-from model_types import * 
+from jax_pixtral.model_types import * 
 from jax.core import ShapedArray # for loading dummy tensors with no data 
 
 import numpy as np

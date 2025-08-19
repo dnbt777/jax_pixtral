@@ -1,7 +1,3 @@
-import jax
-import jax.numpy as jnp
-from typing import NamedTuple, List
-
 #|==============================================================>
 #|_______ model_types.py _______________________________________
 #|
@@ -17,12 +13,17 @@ from typing import NamedTuple, List
 #|===============================================================>>>
 
 
+import jax
+import jax.numpy as jnp
+from typing import NamedTuple, List
+
+
 #######
 ## kvcache
 # contains a list of arrays corresponding to each layer
 # only used in lang forward
 class KVCache(NamedTuple):
-    K: List[jax.Array] # (xfmr layer, B, Hk, r, T, d)
+    K: List[jax.Array] # shape = (xfmr layer, B, Hk, r, T, d)
     V: List[jax.Array]
 
 

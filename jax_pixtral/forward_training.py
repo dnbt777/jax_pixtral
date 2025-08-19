@@ -1,40 +1,27 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
-from typing import List
-from model_types import *
-from einops import rearrange
 import jax.random as jrand
+from typing import List
+from jax_pixtral.model_types import *
+from einops import rearrange
+
 from functools import partial
 
 from PIL import Image
-import cv2
 
-from forward_common import (
+from jax_pixtral.forward_common import (
     vision_encoder, vision_language_adapter, text_embedding, multimodal_embedding,
     transformer_block
 )
-from forward_common import *
+from jax_pixtral.forward_common import *
 
 from typing import NamedTuple, List
-from model_types import PixtralModel
+from jax_pixtral.model_types import PixtralModel
+from jax_pixtral.lora_types import *
 
 from safetensors.flax import save_file, load_file
 
 
-
-
-################################
-## DenseLora
-## applies a lora to the lm head
-
-# Lora: trains the model to have different facts/instructions
-# small matrix that goes over lm head
-# https://ash-01xor.github.io/blog/posts/LoRA/
-class DenseLoRA(NamedTuple):
-    in_matrix: jax.Array # (channel, lora_dim)
-    out_matrix: jax.Array # (lora_dim, vocab)
-    alpha: jnp.bfloat16
 
 
 def init_dense_lora(
@@ -51,30 +38,6 @@ def init_dense_lora(
         alpha=jnp.bfloat16(1.0),
     )
 
-
-
-#########################
-## AttentionLora
-## list of QLoRA, KLoRA, and VLoRA (QKV - NOT 'quantized')
-## layer-based. this will be scanned over
-
-class AttentionLoRALayer(NamedTuple):
-    in_q:  jax.Array
-    out_q: jax.Array
-    alpha_q: jax.Array 
-    in_k:  jax.Array
-    out_k: jax.Array
-    alpha_k: jax.Array
-    in_v:  jax.Array
-    out_v: jax.Array
-    alpha_v: jax.Array
-    in_o:  jax.Array
-    out_o: jax.Array
-    alpha_o: jax.Array
-
-
-class AttentionLoRA(NamedTuple):
-    layers: AttentionLoRALayer
 
 
 def init_attention_lora(
@@ -107,16 +70,6 @@ def init_attention_lora(
         )
     )
 
-
-
-###########################
-### LoRA
-## all loras combined into one
-## general-purpose lora type. used for function logic/signatures
-
-class LoRA(NamedTuple):
-    attention_lora: AttentionLoRA
-    dense_lora: DenseLoRA
 
 
 def init_lora(
@@ -392,19 +345,3 @@ def text_lora_loss_fn(
     return batch_loss
 
 
-
-# experiments
-# train a simple lora that writes in all caps
-# train a simple lora that 
-# do in context learning
-
-
-# experiments to consider
-# sparse autoencoder for chesstral (constantly steers the conversation towards chess)
-
-
-# write a blog post on how to implement this
-# write little blog posts about experiments (make it fun)
-
-
-# for chesstral: this NEEDS a lora on everything related to vision processing

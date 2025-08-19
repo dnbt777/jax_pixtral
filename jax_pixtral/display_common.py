@@ -1,12 +1,41 @@
-from PIL import Image
-import jax.numpy as jnp 
+#|==============================================================>
+#|_______ display_common.py _____________________________________
+#|
+#|
+#|  Functions/values for prettyprinting text/images
+#|
+#|  Values
+#|    - Standard colors
+#|    - Jax colors
+#| 
+#|  Functions
+#|    - Add highlight/font colors to strings
+#|    - Color printing functions
+#|    - Terminal image display functions
+#|
+#|  Conventions:
+#|    - Color: tuple(r, g, b)
+#|    ~ Colors with <100% opacity are treated as transparent
+#|
+#|
+#|===============================================================>>>
 
+
+from PIL import Image
+import jax.numpy as jnp
+from typing import Optional, Tuple, TypeAlias
+
+
+
+### define colors
+Color: TypeAlias = Tuple[int, int, int]
+# standard
 color_black = (0, 0, 0)
 color_grey = (130, 130, 130)
 color_red = (255, 0, 0)
 color_green = (0, 255, 0)
 color_blue = (0, 0, 255)
-
+# jax
 color_jax_purple_light = (234, 128, 252)
 color_jax_purple_med = (0, 105, 92)
 color_jax_purple_dark = (106, 27, 154)
@@ -16,15 +45,27 @@ color_jax_green_light = (38, 166, 154)
 color_jax_green_dark = (0, 105, 92)
 
 
-def color_string(s, color):
+
+# Add highlight/font colors to strings
+
+def color_string(s: str, color: Color) -> str:
+    """ returns $string with $color font-color """
     r, g, b = color
     return f"\x1b[38;2;{r};{g};{b}m{s}\x1b[0m"
 
-def highlight_string(s, color):
+
+
+def highlight_string(s: str, color: Color) -> str:
+    """ returns $string highlited with $color """
     r, g, b = color
     return f"\x1b[48;2;{r};{g};{b}m{s}\x1b[0m"
 
-def print_color(*msgs, color=color_black, end="\n"):
+
+
+# Color printing functions
+
+def print_color(*msgs, color: Color=color_black, end="\n"):
+    """ same as print(strings), but with colors (same api) """
     if len(color) == 4:
         r, g, b, a = color
         if a < 255:
@@ -36,16 +77,24 @@ def print_color(*msgs, color=color_black, end="\n"):
     print(f"\x1b[38;2;{r};{g};{b}m{msg}\x1b[0m", end=end, flush=True)
 
 
-def set_text_color(color):
+
+def set_text_color(color: Color):
+    """ changes the font-color of future printed characters """
     r, g, b = color
     print(f"\x1b[38;2;{r};{g};{b}m", end="", flush=True)
 
 
+
 def reset_text_color():
+    """ resets the font-color to default """
     print("\x1b[0m", end="", flush=True)
 
 
-def two_pixel_column(top_pixel_color, bottom_pixel_color):
+
+# Terminal image display functions
+
+def two_pixel_column(top_pixel_color: Color, bottom_pixel_color: Color) -> str:
+    """ create a colored char that looks like a top and bottom pixel """
     if len(top_pixel_color) == 4:
         r0, g0, b0, a0 = top_pixel_color
     else:
@@ -58,7 +107,7 @@ def two_pixel_column(top_pixel_color, bottom_pixel_color):
 
     if (len(top_pixel_color) == 4 and len(bottom_pixel_color) == 4):
         if (a0 < 255) and (a1 < 255):
-            return " " # transparent
+            return " " # if any transparency, treat as completely transparent
     
     RESET = "\x1b[0m"
     upper_half_block = "▀"
@@ -68,14 +117,12 @@ def two_pixel_column(top_pixel_color, bottom_pixel_color):
 
 
 
-def load_and_show_image(image_url, height=32, resample=None):
-    # todo add base64 and url downloads (maybe..)
-    image = Image.open(image_url)
-    show_image(image, resample=resample)
-
-
-
-def show_image(image, height=32, resample=None):
+def show_image(
+    image: Image,
+    height: int = 32,
+    resample: Optional[Image.Resampling] = None
+):
+    """ prints $image to the terminal using two-pixel columns """
     resize_ratio = height / image.height
     new_size = (int(image.width*resize_ratio), height)
     if resample:
@@ -93,6 +140,17 @@ def show_image(image, height=32, resample=None):
             print(two_pixel_column(top_pixel_color, bottom_pixel_color), end="", flush=True)
         print()
 
+
+
+def load_and_show_image(
+    image_url: str,
+    height: int = 32,
+    resample: Optional[Image.Resampling] = None
+):
+    """ loads an image from $image_url and shows it using show_image """
+    # todo add base64 and url downloads (maybe..)
+    image = Image.open(image_url)
+    show_image(image, resample=resample)
 
 
 
