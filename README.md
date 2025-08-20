@@ -86,6 +86,7 @@ Why use a 60GB volume?
 - single-batch tok/sec is low (7tok/sec on an A40)
 - OOM for ~4+ images in the chat (A40)
 - support for models besides pixtral 12B not yet added
+- it feels like attention leaks between images. maybe a masking issue
 
 
 ## features todo

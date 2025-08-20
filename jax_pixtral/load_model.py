@@ -38,16 +38,17 @@ def load_params(paths: str) -> PixtralModel:
     transformer_layers = list(range(39+1)) # [0, 39]
     model_dtype = "bfloat16"
     cpu = jax.devices("cpu")[0]
+    default_device = jax.devices()[0] # gpu/tpu/tenstorrent, if exists. otherwise cpu
 
     path = paths[0] # temp (some models have multiple safetensors files. pixtral 12b only has one)
 
     with safe_open(path, framework="numpy") as f:
-        load_tensor = lambda key: jax.device_put(f.get_tensor(key)) # straight to gpu
+        load_tensor = lambda key: jax.device_put(f.get_tensor(key), device=default_device) # straight to gpu
 
         def load_tensors(fmt_key, count): # stack on host, then send to gpu
             with jax.default_device(cpu):
-                stacked = jnp.stack([f.get_tensor(fmt_key.format(i)) for i in range(count)])
-            return jax.device_put(stacked)
+                stacked = jnp.stack([jnp.array(f.get_tensor(fmt_key.format(i))) for i in range(count)])
+            return jax.device_put(stacked, device=default_device)
 
         # load model
         model_params = PixtralModel(
