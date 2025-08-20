@@ -1,10 +1,26 @@
+#|==============================================================>
+#|_______ forward_prefill.py ____________________________________
+#|
+#|
+#|  Prefill forward functions for pixtral
+#| 
+#|  Functions
+#|    - LoRA functions: init, save, load, merge
+#|    - Training functions
+#|
+#|  Conventions:
+#|    - B: batch dim
+#|    - T: time dim (the position of each token in the sequence)
+#|    - C: channel dim (position inside each token's embedding)
+#|    - d: max(channel_dim)
+#|
+#|===============================================================>>>
+
+
 import jax
 import jax.numpy as jnp
 import jax.random as jrand
-from typing import List
-from jax_pixtral.model_types import *
 from einops import rearrange
-
 from functools import partial
 
 from PIL import Image
@@ -16,13 +32,14 @@ from jax_pixtral.forward_common import (
 from jax_pixtral.forward_common import *
 
 from typing import NamedTuple, List
-from jax_pixtral.model_types import PixtralModel
+from jax_pixtral.model_types import *
 from jax_pixtral.lora_types import *
 
 from safetensors.flax import save_file, load_file
 
 
 
+### LoRA functions
 
 def init_dense_lora(
     key: jax.Array,
@@ -97,13 +114,14 @@ def init_lora(
     )
 
 
-#@partial(jax.jit, donate_argnames=["model_params", "lora_params"])
+
+@partial(jax.jit, donate_argnames=["model_params", "lora_params"])
 def merge_lora(
     model_params,
     lora_params
 ):
     """
-    Adds the lora params onto the model's params
+    Permanently adds the lora params onto the model's params. Not used during training
     """
     # dense
     #model_params = model_params._replace(transformer=)
@@ -132,7 +150,6 @@ def merge_lora(
                                         
 
 
-
 def load_lora(filepath: str, device: jax.Device = None) -> AttentionLoRA:
     tensors = load_file(filepath)
     attn_prefix = "attn"
@@ -153,6 +170,7 @@ def load_lora(filepath: str, device: jax.Device = None) -> AttentionLoRA:
         attention_lora=AttentionLoRA(AttentionLoRALayer(**attention_lora_tensors)),
         dense_lora=DenseLoRA(**dense_lora_tensors),
     )
+
 
 
 def save_lora(lora_params: AttentionLoRA, filepath: str):
@@ -183,29 +201,13 @@ def save_lora(lora_params: AttentionLoRA, filepath: str):
 
 
 
-#@jax.jit
-def mm_lora_loss_fn(
-     lora_params: LoRA,
-     pixtral_params: PixtralModel,
-     batch_message_tokens: jax.Array,
-     batch_processed_images,
-     batch_intext_image_start_indices: List[int],
-     batch_context_mask: jax.Array,
-     batch_padding_mask: jax.Array,
-     key: jax.Array
-) -> float:
-    # forward
-    next_token_logits = mm_forward(pixtral_params, batch_message_tokens, batch_processed_images, batch_intext_image_start_indices, lora_params=lora_params)
-    next_token_logprobs = jax.nn.log_softmax(next_token_logits[:, :-1, :], axis=-1)
-    # mask out context tokens (i.e. only do assistant response)
-    target_probs = jax.nn.one_hot(batch_message_tokens[1:], 131072, axis=-1, dtype=jnp.bfloat16)
-    batch_loss_mask = jnp.logical_or(batch_context_mask, batch_padding_mask) # mask out context and padding, only grade on response
-    batch_loss_mask = batch_loss_mask[:, :-1, None]
-    # get loss
-    batch_loss = cross_entropy_loss(batch_next_token_logprobs, batch_target_probs, batch_loss_mask)
+def batch_parse_completions(completions: list, tokenizer_config_dir: str = None) -> dict:
+    tokenizer, _, _ = load_tokenizer(tokenizer_config_dir)
+    return preloaded_batch_parse_completions(tokenizer, completions)
 
 
-def batch_parse_completions(completions):
+
+def preloaded_batch_parse_completions(tokenizer, completions: list) -> dict:
     """
     Batches chat completions for training
 
@@ -225,7 +227,7 @@ def batch_parse_completions(completions):
     # store processed prompts and initialize values
     largest_completion_tokens = 0
     for completion in completions:
-        completion_tokens, processed_images, image_start_indices, context_mask, image_mask = tokenize_messages_dict_with_masks(completion)
+        completion_tokens, processed_images, image_start_indices, context_mask, image_mask = tokenize_messages_dict_with_masks(tokenizer, completion)
         print(f"input tokens: {len(completion_tokens)}", completion_tokens)
         largest_completion_tokens = max(largest_completion_tokens, len(completion_tokens))
         batch_completions["processed_images"].append(processed_images)
@@ -255,15 +257,45 @@ def batch_parse_completions(completions):
 
 
 
+### Training functions
+
+
+"""
+# TODO
+@jax.jit
+def mm_lora_loss_fn(
+     lora_params: LoRA,
+     pixtral_params: PixtralModel,
+     batch_message_tokens: jax.Array,
+     batch_processed_images,
+     batch_intext_image_start_indices: List[int],
+     batch_context_mask: jax.Array,
+     batch_padding_mask: jax.Array,
+     key: jax.Array
+) -> float:
+    # forward
+    next_token_logits = mm_forward(pixtral_params, batch_message_tokens, batch_processed_images, batch_intext_image_start_indices, lora_params=lora_params)
+    next_token_logprobs = jax.nn.log_softmax(next_token_logits[:, :-1, :], axis=-1)
+    # mask out context tokens (i.e. only do assistant response)
+    target_probs = jax.nn.one_hot(batch_message_tokens[1:], 131072, axis=-1, dtype=jnp.bfloat16)
+    batch_loss_mask = jnp.logical_or(batch_context_mask, batch_padding_mask) # mask out context and padding, only grade on response
+    batch_loss_mask = batch_loss_mask[:, :-1, None]
+    # get loss
+    batch_loss = cross_entropy_loss(batch_next_token_logprobs, batch_target_probs, batch_loss_mask)
+"""
+
+
     
 def text_forward_train(model_params: PixtralModel, batch_tokens, batch_attn_mask, lora_params=None):
   hidden_state_BTC = text_embedding(model_params, batch_tokens)
   return forward_train(model_params, hidden_state_BTC, batch_attn_mask, lora_params=lora_params)
 
 
+
 def mm_forward_train(model_params: PixtralModel, batch_tokens, batch_image_sets, batch_intext_image_start_indices, batch_attn_mask, lora_params=None):
   hidden_state_BTC = multimodal_embedding(model_params, batch_tokens, batch_image_sets, batch_intext_image_start_indices)
   return forward_train(model_params, hidden_state_BTC, batch_attn_mask, lora_params=lora_params)
+
 
 
 def forward_train(model_params, hidden_state_BTC, batch_attn_mask, lora_params=None):
@@ -305,7 +337,6 @@ def forward_train(model_params, hidden_state_BTC, batch_attn_mask, lora_params=N
       hidden_state_BTC = hidden_state_BTC @ model_params.output_weight.T # (B, C) @ (C, vocab) => (B, vocab)
       
   return hidden_state_BTC
-
 
 
 

@@ -34,11 +34,11 @@ from jax_pixtral.forward_common import *
 
 def pixtral_attention_prefill(
         block_params: TransformerBlock,
-        hidden_state_BTC,
-        freqs,
-        query_heads, kv_heads, head_dim,
-        attn_mask,
-        block_lora_params=None
+        hidden_state_BTC: jax.Array,
+        freqs: jax.Array,
+        query_heads: int, kv_heads: int, head_dim: int,
+        attn_mask: jax.Array,
+        block_lora_params: LoRA=None
 ) -> Tuple[jax.Array, jax.Array, jax.Array]:
     # compute qkv
     Q = hidden_state_BTC @ block_params.attention_wq_weight.T
@@ -89,10 +89,10 @@ def pixtral_attention_prefill(
 def transformer_block_prefill(
         block_params: TransformerBlock,
         hidden_state_BTC: jax.Array,
-        freqs_1d,
-        query_heads, kv_heads, head_dim,
-        attn_mask,
-        block_lora_params=None) -> jax.Array:
+        freqs_1d: jax.Array,
+        query_heads: int, kv_heads: int, head_dim: int,
+        attn_mask: jax.Array,
+        block_lora_params: LoRA=None) -> jax.Array:
     # same block for vision encoder AND transformer
     residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
     residual_BTC, K, V = pixtral_attention_prefill(block_params, residual_BTC, freqs_1d, query_heads, kv_heads, head_dim, attn_mask, block_lora_params=block_lora_params)
@@ -105,12 +105,12 @@ def transformer_block_prefill(
 
 
 def forward_prefill(
-        model_params,
-        hidden_state_BTC,
-        batch_next_token_indices,
-        batch_attn_mask,
-        lora_params=None
-):
+        model_params: PixtralModel,
+        hidden_state_BTC: jax.Array,
+        batch_next_token_indices: jax.Array,
+        batch_attn_mask: jax.Array,
+        lora_params: LoRA=None,
+) -> Tuple[jax.Array, KVCache]:
     B, T, C = hidden_state_BTC.shape
     head_dim = 128 # params.json
     max_pos, d = T, head_dim
@@ -161,41 +161,40 @@ def forward_prefill(
 
 def text_forward_prefill(
         model_params: PixtralModel,
-        batch_tokens,
-        batch_next_token_indices,
-        batch_attn_mask,
-        lora_params=None
-):
+        batch_tokens: jax.Array,
+        batch_next_token_indices: jax.Array,
+        batch_attn_mask: jax.Array,
+        lora_params: LoRA = None
+) -> Tuple[jax.Array, KVCache]:
     hidden_state_BTC = text_embedding(model_params, batch_tokens)
     return forward_prefill(model_params, hidden_state_BTC, batch_next_token_indices, batch_attn_mask, lora_params=lora_params)
 
 
 
 def mm_forward_prefill(
-        model_params: PixtralModel, 
-     batch_tokens, 
-     batch_image_sets,
-     
-     batch_intext_image_start_indices, 
-     batch_next_token_indices, 
-     batch_attn_mask, 
-     lora_params=None
-):
+     model_params: PixtralModel, 
+     batch_tokens: jax.Array, 
+     batch_image_sets: jax.Array,
+     batch_intext_image_start_indices: jax.Array, 
+     batch_next_token_indices: jax.Array, 
+     batch_attn_mask: jax.Array, 
+     lora_params: LoRA = None
+) -> Tuple[jax.Array, KVCache]:
     hidden_state_BTC = multimodal_embedding(model_params, batch_tokens, batch_image_sets, batch_intext_image_start_indices)
     return forward_prefill(model_params, hidden_state_BTC, batch_next_token_indices, batch_attn_mask, lora_params=lora_params)
 
 
 
 def inference_prefill(
-        key,
-        pixtral_params, 
-        batch_tokens, 
-        batch_image_sets, 
-        batch_intext_image_start_indices,             
-        batch_next_token_indices, 
-        batch_attn_mask, 
-        temperature, 
-        lora_params=None
+        key: jax.Array,
+        pixtral_params: PixtralModel, 
+        batch_tokens: jax.Array, 
+        batch_image_sets: jax.Array, 
+        batch_intext_image_start_indices: jax.Array,             
+        batch_next_token_indices: jax.Array, 
+        batch_attn_mask: jax.Array, 
+        temperature: float, 
+        lora_params: LoRA = None
 ) -> Tuple[jax.Array, KVCache]:
     if any([len(image_set) > 0 for image_set in batch_image_sets]):
             batch_next_token_logit, kvcache = mm_forward_prefill(

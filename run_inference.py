@@ -39,6 +39,6 @@ context = [
 
 
 # run inference on prompt
-completion = get_completion(context, max_tokens=256, temp=0.0)
+completion = get_completion(context, max_tokens=256, temp=0.0, tokenizer_config_dir="./pixtral")
 
 print(completion)

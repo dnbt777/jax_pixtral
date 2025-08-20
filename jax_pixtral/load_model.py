@@ -1,3 +1,13 @@
+#|=====================================>
+#|_______ load_model.py _______________
+#|
+#|
+#|  Loads pixtral from safetensors
+#| 
+#| 
+#|======================>==============>>
+
+
 import jax
 import jax.numpy as jnp
 from safetensors.numpy import load_file
@@ -7,16 +17,10 @@ from jax.core import ShapedArray # for loading dummy tensors with no data
 
 import numpy as np
 
-#|=====================================>
-#|_______ load_model.py _______________
-#|
-#|
-#|  loads pixtral from safetensors
-#| 
-#| 
-#|======================>==============>>
 
-
+# Print out the shapes of the model
+# Alternatively, huggingface shows shapes in safetensor files:
+# https://huggingface.co/mistralai/Pixtral-12B-2409/blob/main/consolidated.safetensors
 def display_shapes(paths: str):
     for path in paths:
         tensors = load_file(path)
@@ -26,6 +30,8 @@ def display_shapes(paths: str):
         del tensors 
 
 
+
+# can likely be optimized
 def load_params(paths: str) -> PixtralModel:
     """
     Loads pixtral's params
@@ -34,10 +40,7 @@ def load_params(paths: str) -> PixtralModel:
     transformer_layers = list(range(39+1)) # [0, 39]
     model_dtype = "bfloat16"
 
-    # load all tensors into host memory once
-    # then, do to_device for each key
-
-    path = paths[0] # temp
+    path = paths[0] # temp (some models have multiple safetensors files. pixtral 12b only has one)
 
     with safe_open(path, framework="numpy") as f:
         load_tensor = lambda key: jax.device_put(f.get_tensor(key))
@@ -86,8 +89,7 @@ def load_params(paths: str) -> PixtralModel:
     return model_params
 
 
+
 fast_load_params = load_params # legacy
-
-
 
 

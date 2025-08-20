@@ -9,7 +9,21 @@ from jax_pixtral.inference import get_completions
 
 
 # create prompt (context)
-context = [
+context1 = [
+    {
+        "role":
+        "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Say hi!"
+            },
+        ],
+    },
+]
+
+# create different prompt
+context2 = [
     {
         "role":
         "user",
@@ -23,13 +37,16 @@ context = [
 ]
 
 
+prompts = [context1, context2]
+
 
 # run inference on prompt
-completion = get_completion(
-    context,
+completions = get_completions(
+    prompts,
     max_tokens=64,
     temp=0.0,
-    lora_path="loras/test.safetensors"
+    lora_path="loras/test.safetensors",
+    tokenizer_config_dir="./pixtral"
 )
 
-print(completion)
+print(completions)

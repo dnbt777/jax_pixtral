@@ -1,3 +1,22 @@
+#|==============================================================>
+#|_______ inference.py __________________________________________
+#|
+#|
+#|  Functions for inferencing Pixtral
+#| 
+#|  Functions
+#|    - Message parsing functions
+#|    - Chat loop
+#|    - Completion functions (single and batched)
+#|
+#|  Conventions:
+#|    - preloaded_get_completions: gets completions using params from args 
+#|    -           get_completions: loads params and gets completions
+#|
+#|
+#|===============================================================>>>
+
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -7,8 +26,7 @@ import jax.random as jrand
 
 ## load params
 from jax_pixtral.load_model import load_params, fast_load_params
-from jax_pixtral.forward_common import encode, decode, tokenize_messages_dict
-
+from jax_pixtral.forward_common import load_tokenizer, tokenize_messages_dict
 from jax_pixtral.forward_training import load_lora, LoRA
 
 # typing
@@ -20,7 +38,7 @@ import time
 
 # chat formatting
 from PIL import Image
-from jax_pixtral.display_common import *
+from jax_pixtral.display_common import * # colors, text color modifiers, show images
 from pprint import pprint # pretty debug outputs
 import codecs # used for streaming unicode (an emoji is >1 tokens - breaks if printed token by token)
 
@@ -29,6 +47,8 @@ from jax_pixtral.forward_prefill import inference_prefill
 from jax_pixtral.forward_cached import inference_cached
 
 
+
+### Message parsing functions and constants
 
 left_bracket_token = "<<"
 right_bracket_token = ">>"
@@ -46,6 +66,7 @@ Example prompt: "This is a prompt. Here {left_bracket_token}./images/image.png{r
 /exit
 """
 
+# attempt to fix unicode streaming
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace") # emoji streaming stuff (currently broken)
 decoder = codecs.getincrementaldecoder("latin-1")()
@@ -132,7 +153,13 @@ def print_user_message(user_message):
     
 
 
-def batch_parse_prompts(prompts, max_tokens):
+def batch_parse_prompts(prompts, max_tokens: int, tokenizer_config_dir: str = None) -> dict:
+    tokenizer, _, _ = load_tokenizer(tokenizer_config_dir)
+    return preloaded_batch_parse_prompts(tokenizer, prompts, max_tokens)
+
+
+
+def preloaded_batch_parse_prompts(tokenizer: dict, prompts, max_tokens: int) -> dict:
     # tokenize prompt
     # SoA (for logic related (not performance) reasons)
     batches = len(prompts)
@@ -149,7 +176,7 @@ def batch_parse_prompts(prompts, max_tokens):
 
     # store processed prompts and initialize values
     for prompt in prompts:
-        prompt_tokens, processed_images, image_start_indices = tokenize_messages_dict(prompt)
+        prompt_tokens, processed_images, image_start_indices = tokenize_messages_dict(tokenizer, prompt)
         batch_prompts_dict["initial_prompt_tokens"].append(prompt_tokens)
         batch_prompts_dict["processed_images"].append(processed_images)
         batch_prompts_dict["image_start_indices"].append(image_start_indices)
@@ -182,10 +209,11 @@ def batch_parse_prompts(prompts, max_tokens):
 
 
 def chat(
-    verbose=True, # pretty print statuses
-    debug=False, # output internal info
-    safetensors_paths=['./pixtral/consolidated.safetensors'], # pixtral param safetensor paths
-    lora_path=None # paths of additional LoRAs
+    verbose: bool = True, # pretty print statuses
+    debug: bool = False, # output internal info
+    safetensors_paths: List[str] = ['./pixtral/consolidated.safetensors'], # pixtral param safetensor paths
+    lora_path: str = None, # paths of additional LoRAs
+    tokenizer_config_dir: str = None,
     ):
     params_loaded = False
 
@@ -260,7 +288,7 @@ def chat(
             if lora_path:
                 lora_params = load_lora("loras/test.safetensors")
                 #pixtral_params = apply_lora(pixtral_params, lora_params)
-        completion = _get_completion(pixtral_params, messages, max_tokens, temp, verbose=False, color=color_jax_blue_light, lora_params=lora_params)
+        completion = preloaded_get_completion(pixtral_params, messages, max_tokens, temp, verbose=False, color=color_jax_blue_light, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
         print() # add a newline
 
         # add ai response to chat
@@ -279,7 +307,8 @@ def get_completion(
     temp: float = 1.0,
     seed: float = (0_0)-7,
     verbose: bool = True,
-    lora_path: str = None
+    lora_path: str = None,
+    tokenizer_config_dir: str = None,
 ) -> str:
     load_start = time.time()
     safetensors_paths = ['./pixtral/consolidated.safetensors']
@@ -288,7 +317,7 @@ def get_completion(
     lora_params = None # lora_params is Optional<LoRA>
     if lora_path:
         lora_params = load_lora(lora_path)
-    return _get_completions(pixtral_params, [prompt], max_tokens, temp=temp, seed=seed, verbose=verbose, lora_params=lora_params)
+    return preloaded_get_completions(pixtral_params, [prompt], max_tokens, temp=temp, seed=seed, verbose=verbose, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
 
 
 
@@ -300,6 +329,7 @@ def get_completions(
     seed: float = (0_0)-7,
     verbose: bool = True,
     lora_path: str = None,
+    tokenizer_config_dir: str = None,
 ) -> str:
     # load model params
     load_start = time.time()
@@ -310,11 +340,11 @@ def get_completions(
     lora_params = None
     if lora_path:
         lora_params = load_lora(lora_path)
-    return _get_completions(pixtral_params, prompts, max_tokens, temp=temp, seed=seed, verbose=verbose, lora_params=lora_params)
+    return preloaded_get_completions(pixtral_params, prompts, max_tokens, temp=temp, seed=seed, verbose=verbose, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
 
 
 
-def _get_completion(
+def preloaded_get_completion(
     pixtral_params: PixtralModel,
     prompt,
     max_tokens: int,
@@ -323,8 +353,9 @@ def _get_completion(
     verbose: bool = True,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
+    tokenizer_config_dir: str = None,
 ) -> str:
-    return _get_completions(
+    return preloaded_get_completions(
         pixtral_params,
         [prompt],
         max_tokens,
@@ -333,12 +364,13 @@ def _get_completion(
         verbose=verbose,
         color=color,
         lora_params=lora_params,
+        tokenizer_config_dir=tokenizer_config_dir,
     )[0]
 
 
 
 # loads completion using existing params
-def _get_completions(
+def preloaded_get_completions(
     pixtral_params: PixtralModel,
     prompts,
     max_tokens: int,
@@ -347,12 +379,15 @@ def _get_completions(
     verbose: bool = True,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
+    tokenizer_config_dir: str = None
 ) -> List[str]:
     log = lambda *args: None
     if verbose:
         log = print
 
-    batch_prompts = batch_parse_prompts(prompts, max_tokens)
+    tokenizer, encode, decode = load_tokenizer(tokenizer_config_dir)
+
+    batch_prompts = preloaded_batch_parse_prompts(tokenizer, prompts, max_tokens)
     prompt_count = len(prompts)
     
     ## run inference loop

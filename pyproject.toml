@@ -12,4 +12,3 @@ dependencies = [
     "regex>=2025.7.34",
     "safetensors>=0.5.3",
 ]
-

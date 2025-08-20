@@ -3,7 +3,7 @@
 ### --- runs inference on a batch of prompts of arbitrary sizes
 ###
 
-from inference import get_completions
+from jax_pixtral.inference import get_completions
 
 
 
@@ -49,7 +49,7 @@ for i in range(BATCH_SIZE):
 
 
 ### run inference on the entire batch
-completions = get_completions(text_prompts, max_tokens=16, temp=0.0)#, lora_path="loras/test.safetensors")
+completions = get_completions(prompts, max_tokens=16, temp=0.0, tokenizer_config_dir="./pixtral")#, lora_path="loras/test.safetensors")
 
 
 
@@ -58,7 +58,6 @@ for i, completion in enumerate(completions):
     print(f"{i}------------")
     print(completion)
     print(f"------------{i}")
-
 
 
 

@@ -1,4 +1,4 @@
-# Pixtral in jax from scratch (WIP)
+# Pixtral from scratch in jax (WIP)
 
 ## features
 - live chat (supports images, commands)
@@ -81,10 +81,11 @@ Why use a 60GB volume?
 
 
 
-## known bugs
+## known bugs/limitations
 - when streaming completions (i.e. in the chat), emojis dont render properly (see the header img in this readme)
 - single-batch tok/sec is low (7tok/sec on an A40)
-- OOM for ~4+ images in the chat
+- OOM for ~4+ images in the chat (A40)
+- support for models besides pixtral 12B not yet added
 
 
 ## features todo

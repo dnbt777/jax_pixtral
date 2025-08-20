@@ -11,9 +11,14 @@ import jax.random as jrand
 ## param loading
 from jax_pixtral.load_model import load_params, fast_load_params
 # fine-tuning
-from jax_pixtral.forward_training import *
+from jax_pixtral.forward_training import batch_parse_completions, init_lora, save_lora, preloaded_get_completions
 # logging
 import time
+
+
+
+seed = (0_0)-7
+rolling_key = jrand.PRNGKey(seed)
 
 
 
@@ -54,7 +59,7 @@ for _ in range(BATCH_SIZE):
 # stitch the completions together
 # array-of-structs -> struct-of-(jax)-arrays (very jax friendly)
 # in get_completions this happens automatically, but in training it does not
-batch_completions = batch_parse_completions(completions)
+batch_completions = batch_parse_completions(completions, tokenizer_config_dir="./pixtral")
 
 
 
@@ -76,7 +81,7 @@ q_proj_shape = (5120, 4096)
 v_proj_shape = (5120, 1024)
 # create the lora
 lora_params = init_lora(
-    key,
+    rolling_key,
     dense_in_dim, dense_out_dim, dense_rank,
     q_proj_shape[0], q_proj_shape[1], attn_rank,
     k_proj_shape[0], k_proj_shape[1], attn_rank,
@@ -84,6 +89,7 @@ lora_params = init_lora(
     o_proj_shape[0], o_proj_shape[1], attn_rank,
     layers,
 )
+rolling_key, _ = jrand.split(rolling_key) # reroll key every time it's used
 
 
 
@@ -99,17 +105,16 @@ print(f"Loaded params in {time.time() - load_start:.2f}s")
 #### begin fine-tuning
 # hyperparameters and other fine tuning advice:
 # https://mistral.ai/news/unlocking-potential-vision-language-models-satellite-imagery-fine-tuning
-seed = (0_0)-7
-key = jrand.PRNGKey(seed)
-for i in range(1000):
+for i in range(100):
     ## get loss and grads
     loss, grads = jax.value_and_grad(text_lora_loss_fn, argnums=1)(
         pixtral_params,
         lora_params, # arg 1
         batch_completions["tokens"],
         batch_completions["context_mask"], batch_completions["padding_mask"],
-        key
+        rolling_key
     )
+    rolling_key, _ = jrand.split(rolling_key)
     
     ## print grads (shows how params are learning) (uncomment to enable)
     # print(jax.tree_util.tree_map(lambda g: jax.numpy.linalg.norm(g), grads))
@@ -129,8 +134,7 @@ print(f"Saved lora to {filepath}")
 
 
 ### test inference with lora
-completions = _get_completions(pixtral_params, [context], max_tokens=64, temp=0.0, lora_path="loras/test.safetensors")
+completions = preloaded_get_completions(pixtral_params, [context], max_tokens=64, temp=0.0, lora_path="loras/test.safetensors", tokenizer_config_dir="./pixtral")
 print(completions)
-
 
 
