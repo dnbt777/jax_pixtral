@@ -1,9 +1,9 @@
-# Pixtral from scratch in jax (WIP)
+# Pixtral from scratch in jax
 
 ## features
-- live chat (supports images, commands)
-- LoRA batch training and inferencing (including in chat)
-- simple API for completions (get_completions(...))
+- batch LoRA training and inference
+- live chat (supports images, commands, LoRAs from training)
+- simple code, simple api, and example scripts (run_*.py)
 
 
 <img height="777" alt="image" src="https://github.com/user-attachments/assets/a9734d91-9028-42f5-ae75-8cad42d46f23" />
@@ -11,7 +11,9 @@
 
 ## what is this?
 
-This is a VLM inference/training library made for fun + learning + to do VLM/LLM experiments in jax
+This is a VLM inference/training library
+
+I made this for fun + learning + to do VLM/LLM experiments in jax
 
 It is mostly from scratch, but not 100%. Besides jax, it uses:
 - pillow: image processing
@@ -19,8 +21,11 @@ It is mostly from scratch, but not 100%. Besides jax, it uses:
 - einops: makes the code easier to read and reduces bugs
 - safetensors: load/save params
 
-It's not perfect by any means, and improvement suggestions/feedback are very welcome
+It's not perfect by any means. Improvement suggestions/feedback are very welcome
 
+Optimization is WIP. Current throughput (A40): 
+- single completion: 7 tok/s
+- batched: 324 tok/s
 
 
 
@@ -36,13 +41,8 @@ cd jax_pixtral
 ./setup.sh [huggingface_key_for_downloading_pixtral_weights]
 ```
 
-setup.sh:
-- downloads and installs uv
-- downloads pixtral weights from hf
-- syncs uv (installs necessary packages)
 
-
-### Manual setup (if you dont want to run ./setup.sh):
+### Manual setup (if you dont want to run ./setup.sh [hf_key]):
 
 1. install uv and sync packages
 ```
@@ -89,6 +89,7 @@ Why use a 60GB volume?
 
 
 ## features todo
+- Multimodal LoRA training is WIP
 - add optimizers (adam, muon)
 - add more lora types (such as mlp, embeddings, etc)
 - add batch data loading from json files
