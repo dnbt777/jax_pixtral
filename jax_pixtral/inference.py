@@ -214,8 +214,26 @@ def chat(
     safetensors_paths: List[str] = ['./pixtral/consolidated.safetensors'], # pixtral param safetensor paths
     lora_path: str = None, # paths of additional LoRAs
     tokenizer_config_dir: str = None,
+    preload: bool = False,
     ):
     params_loaded = False
+
+    # load params before starting the chat?
+    if preload:
+        if not params_loaded:
+            if lora_path:
+                lora_params = load_lora(lora_path)
+            # load params
+            load_start = time.time()
+            print_color("loading params...", color=color_grey)
+            pixtral_params = fast_load_params(safetensors_paths)
+            if verbose: print_color(f"Loaded params in {time.time() - load_start:.2f}s", color=color_grey)
+            params_loaded = True
+            # apply loras
+            lora_params = None
+            if lora_path:
+                lora_params = load_lora("loras/test.safetensors")
+        
 
     load_and_show_image("./jax_logo.png", height=16, resample=Image.NEAREST) # if alpha ..
     if int(time.time()) % 2 == 7:
@@ -287,7 +305,6 @@ def chat(
             lora_params = None
             if lora_path:
                 lora_params = load_lora("loras/test.safetensors")
-                #pixtral_params = apply_lora(pixtral_params, lora_params)
         completion = preloaded_get_completion(pixtral_params, messages, max_tokens, temp, verbose=False, color=color_jax_blue_light, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
         print() # add a newline
 
@@ -458,6 +475,7 @@ def preloaded_get_completions(
     log("generation duration", duration)
     log("tok/sec", (tokens_generated - 2*prompt_count)/duration) # dont count the 2 tokens generated during prefill + jit
     return [decode(completion_tokens) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
+
 
 
 

@@ -10,4 +10,6 @@ from jax_pixtral.inference import chat
 chat(
     #lora_path="loras/test.safetensors",     # uncomment to enable lora, if youve trained one with run_lora_training.py
     verbose=True,                            # debug messages, such as "loading params" (recommended)
+    preload=True,                            # load params BEFORE starting the chat
 )
+
