@@ -22,3 +22,6 @@ uv run hf download mistralai/Pixtral-12B-2409 --local-dir ./pixtral --token "$1"
 # echo further instructions
 echo "done!"
 echo "Now run 'uv run {script_name}.py'"
+
+# new bash session with uv command
+bash

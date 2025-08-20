@@ -8,12 +8,13 @@
 import jax
 import jax.numpy as jnp
 import jax.random as jrand
-## param loading
+
 from jax_pixtral.load_model import load_params, fast_load_params
-# fine-tuning
-from jax_pixtral.forward_training import batch_parse_completions, init_lora, save_lora, preloaded_get_completions
-# logging
-import time
+
+from jax_pixtral.forward_training import batch_parse_completions, init_lora, save_lora, text_lora_loss_fn
+from jax_pixtral.inference import preloaded_get_completions
+
+import time # logging
 
 
 
@@ -134,7 +135,8 @@ print(f"Saved lora to {filepath}")
 
 
 ### test inference with lora
-completions = preloaded_get_completions(pixtral_params, [context], max_tokens=64, temp=0.0, lora_path="loras/test.safetensors", tokenizer_config_dir="./pixtral")
+completions = preloaded_get_completions(pixtral_params, [context], max_tokens=64, temp=0.0, lora_params=lora_params, tokenizer_config_dir="./pixtral")
 print(completions)
+
 
 
