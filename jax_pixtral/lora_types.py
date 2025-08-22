@@ -7,6 +7,7 @@
 #|  Loras:
 #|    - LoRA (all loras combined)
 #|    - AttentionLoRA (Q, K, V, O)
+#|    - MLPLora
 #|    - DenseLoRA (lm head)
 #|
 #|
@@ -23,12 +24,32 @@ from typing import NamedTuple, List
 
 
 
+########################
+## BlockLora
+## lora for each xfmr block's RMSnorm1, RMSnorm2, and FFW
+## layer-based SoA that will be scanned over
+
+class BlockLoRA(NamedTuple):
+    attnnorm : jax.Array # elementwise. not a lora
+    ffwnorm: jax.Array # elementwise. not a lora
+    ffw1_in: jax.Array
+    ffw1_out: jax.Array
+    ffw1_alpha: jax.Array # array of floats
+    ffw2_in: jax.Array
+    ffw2_out: jax.Array
+    ffw2_alpha: jax.Array
+    ffw3_in: jax.Array
+    ffw3_out: jax.Array
+    ffw3_alpha: jax.Array
+
+
+
 #########################
 ## AttentionLora
 ## list of QLoRA, KLoRA, and VLoRA (QKV - NOT 'quantized')
 ## layer-based SoA. this will be scanned over
 
-class AttentionLoRALayer(NamedTuple):
+class AttentionLoRA(NamedTuple):
     in_q:  jax.Array
     out_q: jax.Array
     alpha_q: jax.Array 
@@ -41,9 +62,6 @@ class AttentionLoRALayer(NamedTuple):
     in_o:  jax.Array
     out_o: jax.Array
     alpha_o: jax.Array
-
-class AttentionLoRA(NamedTuple):
-    layers: AttentionLoRALayer
 
 
 
@@ -64,9 +82,16 @@ class DenseLoRA(NamedTuple):
 ## general-purpose lora type. used for function logic/signatures
 ## to disable specific sub-loras, set their ranks to 0 at initialization
 
+
+# SoA to be scanned over. size (layers, ...)
+class LoRALayers(NamedTuple):
+    block: BlockLoRA
+    attn: AttentionLoRA
+
+
 class LoRA(NamedTuple):
-    attention_lora: AttentionLoRA
-    dense_lora: DenseLoRA
+    layers: LoRALayers
+    dense: DenseLoRA
 
 
 

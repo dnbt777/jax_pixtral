@@ -371,7 +371,6 @@ def RMSnorm(hidden_state: jax.Array, weight: jax.Array) -> jax.Array:
 
 
 
-@jax.jit
 def feed_forward(block_params: TransformerBlock, hidden_state_BTC: jax.Array) -> jax.Array:
     x = hidden_state_BTC
     x1 = jax.nn.silu(x @ block_params.feed_forward_w1_weight.T)
@@ -379,4 +378,20 @@ def feed_forward(block_params: TransformerBlock, hidden_state_BTC: jax.Array) ->
     x2 = (x1 * x3) @ block_params.feed_forward_w2_weight.T
     return x2
 
+
+
+def feed_forward_lora(block_params: TransformerBlock, block_lora_params: LoRA, hidden_state_BTC: jax.Array) -> jax.Array:
+    x = hidden_state_BTC
+
+    x1_ = x @ block_params.feed_forward_w1_weight.T
+    x1_ = x1 + ((x @ block_lora_params.block.ffw1_in) @ block_lora_params.block.ffw1_out)*block_lora_params.block.ffw1_alpha
+    x1 = jax.nn.silu(x1_)
+    
+    x3 = x @ block_params.feed_forward_w3_weight.T
+    x3 = x3 + ((x @ block_lora_params.block.ffw3_in) @ block_lora_params.block.ffw3_out)*block_lora_params.block.ffw3_alpha
+
+    x2 = (x1 * x3) @ block_params.feed_forward_w2_weight.T
+    x2 = x2 + (((x1 * x3) @ block_lora_params.block.ffw2_in) @ block_lora_params.block.ffw2_out)*block_lora_params.block.ffw2_alpha
+    
+    return x2
 
