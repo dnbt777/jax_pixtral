@@ -90,6 +90,7 @@ def pixtral_attention_prefill(
 
 
 # https://github.com/mistralai/mistral-inference/blob/6eb35510403825cfb430b0004443053e8c4b70dc/src/mistral_inference/transformer_layers.py#L123
+# same block for vision encoder AND transformer
 def transformer_block_prefill(
         block_params: TransformerBlock,
         hidden_state_BTC: jax.Array,
@@ -97,15 +98,18 @@ def transformer_block_prefill(
         query_heads: int, kv_heads: int, head_dim: int,
         attn_mask: jax.Array,
         block_lora_params: LoRA=None) -> jax.Array:
-    # same block for vision encoder AND transformer
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
+    ## attention norm
+    residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight)
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.attnorm)
+        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.attnnorm)
+    ## attention
     residual_BTC, K, V = pixtral_attention_prefill(block_params, residual_BTC, freqs_1d, query_heads, kv_heads, head_dim, attn_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
+    ## ff norm
+    residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) 
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block_lora.ffwnorm)
-    
+        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.ffwnorm)
+    ## ff
     if block_lora_params:
         residual_BTC = feed_forward_lora(block_params, block_lora_params, residual_BTC)
     else:
@@ -139,7 +143,7 @@ def forward_prefill(
             xfmr_block_params, block_lora_params = carry
             hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=block_lora_params)
             return hidden_state, (K, V)
-        hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, (model_params.transformer.transformer_layers, lora_params.attention_lora.layers))
+        hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, (model_params.transformer.transformer_layers, lora_params.layers))
     else:
             def scanf(hidden_state, xfmr_block_params):
                 hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=None)
@@ -220,6 +224,7 @@ def inference_prefill(
             )
     batch_next_token = jrand.categorical(key, batch_next_token_logit/max(temperature, 1e-5), axis=-1)
     return batch_next_token, kvcache
+
 
 
 

@@ -248,7 +248,7 @@ def forward_cached(
         xfmr_blocks_data = (
             jnp.arange(layer_count),
             model_params.transformer.transformer_layers, # (40, ...)
-            lora_params.attention_lora.layers # (40, ...)
+            lora_params.layers # (40, ...)
         )
     else:
         def scanf(state, xfmr_block_data):
@@ -295,4 +295,5 @@ def inference_cached(
     # take random sample (weighted)
     next_token_batch = jrand.categorical(key, next_token_batch_logits/max(temperature, 1e-5), axis=-1) # (B,1)
     return jnp.squeeze(next_token_batch, axis=-1), kvcache
+
 

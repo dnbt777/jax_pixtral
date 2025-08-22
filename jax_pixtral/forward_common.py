@@ -52,9 +52,12 @@ def pixtral_attention(
     V = hidden_state_BTC @ block_params.attention_wv_weight.T
     
     if block_lora_params:
-        Q = Q + block_lora_params.alpha_q*((hidden_state_BTC @ block_lora_params.in_q) @ block_lora_params.out_q)
-        K = K + block_lora_params.alpha_k*((hidden_state_BTC @ block_lora_params.in_k) @ block_lora_params.out_k)
-        V = V + block_lora_params.alpha_v*((hidden_state_BTC @ block_lora_params.in_v) @ block_lora_params.out_v)
+        Q = Q + block_lora_params.attn.alpha_q*(
+                (hidden_state_BTC @ block_lora_params.attn.in_q) @ block_lora_params.attn.out_q)
+        K = K + block_lora_params.attn.alpha_k*(
+                (hidden_state_BTC @ block_lora_params.attn.in_k) @ block_lora_params.attn.out_k)
+        V = V + block_lora_params.attn.alpha_v*(
+                (hidden_state_BTC @ block_lora_params.attn.in_v) @ block_lora_params.attn.out_v)
     
     # split into heads (GQA)
     Hk=kv_heads
@@ -84,7 +87,8 @@ def pixtral_attention(
     attn = rearrange(attn, "B H r T d -> B T (H r d)")
     out = attn @ block_params.attention_wo_weight.T
     if block_lora_params:
-        out = out + block_lora_params.alpha_o*((attn @ block_lora_params.in_o) @ block_lora_params.out_o)
+        out = out + block_lora_params.attn.alpha_o*(
+                (attn @ block_lora_params.attn.in_o) @ block_lora_params.attn.out_o)
     
     return out.astype(jnp.bfloat16)
 
@@ -101,10 +105,18 @@ def transformer_block(
 ) -> jax.Array:
     # same block for vision encoder AND transformer
     residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
+    if block_lora_params:
+        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.attnnorm)
     residual_BTC = pixtral_attention(block_params, residual_BTC, freqs_1d, query_heads, kv_heads, head_dim, attn_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
     residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) ## ff norm
-    residual_BTC = feed_forward(block_params, residual_BTC)
+    if block_lora_params:
+        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.ffwnorm)
+    
+    if block_lora_params:
+        residual_BTC = feed_forward_lora(block_params, block_lora_params, residual_BTC)
+    else:
+        residual_BTC = feed_forward(block_params, residual_BTC)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
     return hidden_state_BTC
 
@@ -383,9 +395,9 @@ def feed_forward(block_params: TransformerBlock, hidden_state_BTC: jax.Array) ->
 def feed_forward_lora(block_params: TransformerBlock, block_lora_params: LoRA, hidden_state_BTC: jax.Array) -> jax.Array:
     x = hidden_state_BTC
 
-    x1_ = x @ block_params.feed_forward_w1_weight.T
-    x1_ = x1 + ((x @ block_lora_params.block.ffw1_in) @ block_lora_params.block.ffw1_out)*block_lora_params.block.ffw1_alpha
-    x1 = jax.nn.silu(x1_)
+    x1 = x @ block_params.feed_forward_w1_weight.T
+    x1 = x1 + ((x @ block_lora_params.block.ffw1_in) @ block_lora_params.block.ffw1_out)*block_lora_params.block.ffw1_alpha
+    x1 = jax.nn.silu(x1)
     
     x3 = x @ block_params.feed_forward_w3_weight.T
     x3 = x3 + ((x @ block_lora_params.block.ffw3_in) @ block_lora_params.block.ffw3_out)*block_lora_params.block.ffw3_alpha
@@ -394,4 +406,5 @@ def feed_forward_lora(block_params: TransformerBlock, block_lora_params: LoRA, h
     x2 = x2 + (((x1 * x3) @ block_lora_params.block.ffw2_in) @ block_lora_params.block.ffw2_out)*block_lora_params.block.ffw2_alpha
     
     return x2
+
 

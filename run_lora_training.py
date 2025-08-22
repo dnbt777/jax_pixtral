@@ -80,14 +80,30 @@ k_proj_shape = (5120, 1024)
 o_proj_shape = (4096, 5120)
 q_proj_shape = (5120, 4096)
 v_proj_shape = (5120, 1024)
+# xfmr block lora
+block_rank = 1
+attn_norm_size = 5120
+ffw_norm_size = 5120
+ffw1_shape = (14336, 5120)[::-1]
+ffw2_shape = (5120, 14336)[::-1]
+ffw3_shape = (14336, 5120)[::-1] # transposed
+
 # create the lora
 lora_params = init_lora(
     rolling_key,
+    # dense
     dense_in_dim, dense_out_dim, dense_rank,
+    # attn lora
     q_proj_shape[0], q_proj_shape[1], attn_rank,
     k_proj_shape[0], k_proj_shape[1], attn_rank,
     v_proj_shape[0], v_proj_shape[1], attn_rank,
     o_proj_shape[0], o_proj_shape[1], attn_rank,
+    # block lora
+    attn_norm_size, ffw_norm_size,
+    ffw1_shape[0], ffw1_shape[1], block_rank,
+    ffw2_shape[0], ffw2_shape[1], block_rank,
+    ffw3_shape[0], ffw3_shape[1], block_rank,
+    # layer count
     layers,
 )
 rolling_key, _ = jrand.split(rolling_key) # reroll key every time it's used
@@ -137,6 +153,7 @@ print(f"Saved lora to {filepath}")
 ### test inference with lora
 completions = preloaded_get_completions(pixtral_params, [context], max_tokens=64, temp=0.0, lora_params=lora_params, tokenizer_config_dir="./pixtral")
 print(completions)
+
 
 
 
