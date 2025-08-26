@@ -306,6 +306,7 @@ def preloaded_batch_parse_completions(tokenizer, completions: list) -> dict:
         new_completion_length = largest_completion_tokens
         padding_length = new_completion_length - initial_completion_length
         batch_completions["tokens"][i] = jnp.append(jnp.array(batch_completions["tokens"][i]), jnp.zeros((padding_length,), dtype=int))
+        batch_completions["context_mask"][i] = jnp.append(jnp.array(batch_completions["context_mask"][i]), jnp.ones((padding_length,), dtype=int))
         padding_mask = (jnp.arange(new_completion_length) >= initial_completion_length).astype(bool) # mask padding with True
         assert jnp.sum(padding_mask).astype(int) == padding_length
         batch_completions["padding_mask"][i] = padding_mask
@@ -411,7 +412,8 @@ def cross_entropy_loss(
     batch_target_tokens: jax.Array,
     batch_loss_mask: jax.Array
 ) -> float:
-    batch_next_token_logprobs = jax.nn.log_softmax(batch_next_token_logits, axis=-1)
+    batch_next_token_logprobs = jax.nn.log_softmax(batch_next_token_logits.astype(jnp.float32), axis=-1) # do softmax in float32
+    batch_next_token_logprobs = batch_next_token_logprobs.astype(jnp.bfloat16)
     batch_sub_crossentropies = jnp.take_along_axis(batch_next_token_logprobs, batch_target_tokens[..., None], axis=-1) # B, ->T<-, C
     return -jnp.sum(jnp.where(batch_loss_mask, jnp.bfloat16(0), batch_sub_crossentropies))
 

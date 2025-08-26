@@ -232,7 +232,7 @@ def chat(
             # apply loras
             lora_params = None
             if lora_path:
-                lora_params = load_lora("loras/test.safetensors")
+                lora_params = load_lora(lora_path)
         
 
     load_and_show_image("./jax_logo.png", height=16, resample=Image.NEAREST) # if alpha ..
@@ -270,6 +270,13 @@ def chat(
                     temp = float(args[1])
                 elif args[0] == "max_tokens":
                     max_tokens = int(args[1])
+                elif args[0] == "lora":
+                    if args[1].lower() in ['none', '0', 'off']:
+                        lora_params = None
+                        lora_path = None
+                    else:
+                        lora_path = args[1]
+                        lora_params = load_lora(lora_path)
             elif command == "reset":
                 messages = []
             elif command == "info":
@@ -304,7 +311,7 @@ def chat(
             # apply loras
             lora_params = None
             if lora_path:
-                lora_params = load_lora("loras/test.safetensors")
+                lora_params = load_lora(lora_path)
         completion = preloaded_get_completion(pixtral_params, messages, max_tokens, temp, verbose=False, color=color_jax_blue_light, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
         print() # add a newline
 
@@ -326,6 +333,7 @@ def get_completion(
     verbose: bool = True,
     lora_path: str = None,
     tokenizer_config_dir: str = None,
+    return_full_context: bool = False,
 ) -> str:
     load_start = time.time()
     safetensors_paths = ['./pixtral/consolidated.safetensors']
@@ -334,7 +342,10 @@ def get_completion(
     lora_params = None # lora_params is Optional<LoRA>
     if lora_path:
         lora_params = load_lora(lora_path)
-    return preloaded_get_completions(pixtral_params, [prompt], max_tokens, temp=temp, seed=seed, verbose=verbose, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
+    return preloaded_get_completions(pixtral_params, [prompt], max_tokens,
+                                     temp=temp, seed=seed, verbose=verbose,
+                                     lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir,
+                                     return_full_context=return_full_context)
 
 
 
@@ -347,6 +358,7 @@ def get_completions(
     verbose: bool = True,
     lora_path: str = None,
     tokenizer_config_dir: str = None,
+    return_full_context: bool = False,
 ) -> str:
     # load model params
     load_start = time.time()
@@ -357,7 +369,9 @@ def get_completions(
     lora_params = None
     if lora_path:
         lora_params = load_lora(lora_path)
-    return preloaded_get_completions(pixtral_params, prompts, max_tokens, temp=temp, seed=seed, verbose=verbose, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
+    return preloaded_get_completions(pixtral_params, prompts, max_tokens, temp=temp, seed=seed, verbose=verbose,
+                                     lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir,
+                                     return_full_context=return_full_context)
 
 
 
@@ -371,6 +385,7 @@ def preloaded_get_completion(
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
     tokenizer_config_dir: str = None,
+    return_full_context: bool = False,
 ) -> str:
     return preloaded_get_completions(
         pixtral_params,
@@ -382,7 +397,26 @@ def preloaded_get_completion(
         color=color,
         lora_params=lora_params,
         tokenizer_config_dir=tokenizer_config_dir,
+        return_full_context=return_full_context,
     )[0]
+
+
+# split_list([1, 2, 3, 4, 3, 2, 1], 2) => [[1], [3, 4, 3], [1]]
+def split_list(lst, split_elem):
+    out = []
+    buffer = []
+    i=0
+    while i < len(lst):
+        if lst[i] == split_elem:
+            if buffer != []:
+                out.append(buffer)
+                buffer = []
+        else:
+            buffer.append(lst[i])
+        i += 1
+    if buffer != []:
+        out.append(buffer)
+    return out
 
 
 
@@ -396,7 +430,8 @@ def preloaded_get_completions(
     verbose: bool = True,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
-    tokenizer_config_dir: str = None
+    tokenizer_config_dir: str = None,
+    return_full_context: bool = False,
 ) -> List[str]:
     log = lambda *args: None
     if verbose:
@@ -408,6 +443,7 @@ def preloaded_get_completions(
     prompt_count = len(prompts)
     
     ## run inference loop
+    EOS_TOKEN_ID = 2
     key = jrand.PRNGKey(seed)
     if color:
         set_text_color(color)
@@ -443,10 +479,10 @@ def preloaded_get_completions(
             if i == 1:
                 jit_end = time.time()
                 finished_jit = True
-        ## Print in-progress completion
+        ## Print in-progress completion (single-batch only)
         if prompt_count == 1:
             next_token = next_token_batch[0]
-            if int(next_token) == 2:
+            if int(next_token) == EOS_TOKEN_ID:
                 batch_prompts["completion_tokens"] = batch_prompts["completion_tokens"].at[:, i].set(next_token_batch)
                 break # EOS - stop inference loop
             else:
@@ -474,7 +510,15 @@ def preloaded_get_completions(
     log("tokens generated: ", tokens_generated)
     log("generation duration", duration)
     log("tok/sec", (tokens_generated - 2*prompt_count)/duration) # dont count the 2 tokens generated during prefill + jit
-    return [decode(completion_tokens) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
+    completions = [decode(split_list(completion_tokens, EOS_TOKEN_ID)[0]) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
+    if return_full_context:
+        full_contexts_list = [
+            prompt + [{"role":"assistant","content": [{"type": "text","text": completions[i]}]}]
+            for i, prompt in enumerate(prompts)
+        ]
+        return full_contexts_list
+    else:
+        return completions
 
 
 

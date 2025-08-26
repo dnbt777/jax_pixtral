@@ -98,17 +98,19 @@ def transformer_block_prefill(
         query_heads: int, kv_heads: int, head_dim: int,
         attn_mask: jax.Array,
         block_lora_params: LoRA=None) -> jax.Array:
-    ## attention norm
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight)
+    # attention norm
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.attnnorm)
+        residual_BTC = RMSnorm_lora(hidden_state_BTC, block_params.attention_norm_weight, block_lora_params.block.attnnorm)
+    else:
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
     ## attention
     residual_BTC, K, V = pixtral_attention_prefill(block_params, residual_BTC, freqs_1d, query_heads, kv_heads, head_dim, attn_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
     ## ff norm
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) 
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.ffwnorm)
+        residual_BTC = RMSnorm_lora(hidden_state_BTC, block_params.ffn_norm_weight, block_lora_params.block.ffwnorm)
+    else:
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) ## ff norm
     ## ff
     if block_lora_params:
         residual_BTC = feed_forward_lora(block_params, block_lora_params, residual_BTC)
