@@ -413,10 +413,6 @@ def cross_entropy_loss(
     batch_loss_mask: jax.Array
 ) -> float:
     batch_next_token_logprobs = jax.nn.log_softmax(batch_next_token_logits.astype(jnp.float32), axis=-1) # do softmax in float32
-<<<<<<< HEAD
-=======
-    batch_next_token_logprobs = batch_next_token_logprobs.astype(jnp.bfloat16)
->>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
     batch_sub_crossentropies = jnp.take_along_axis(batch_next_token_logprobs, batch_target_tokens[..., None], axis=-1) # B, ->T<-, C
     N = jnp.maximum(1.0, jnp.sum(~batch_loss_mask))
     cross_entropy_loss = -jnp.sum(jnp.where(batch_loss_mask, jnp.bfloat16(0), batch_sub_crossentropies)) / N
