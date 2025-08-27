@@ -4,6 +4,7 @@
 ### --- example: uppercase(get_completion(""))
 ###
 
+<<<<<<< HEAD
 from jax_pixtral.inference import get_completions, preloaded_get_completions
 from jax_pixtral.dataset import load_dataset, save_dataset
 from jax_pixtral.load_model import load_params
@@ -20,10 +21,21 @@ words = requests.get("https://raw.githubusercontent.com/dwyl/english-words/refs/
 words = words[200:] # skip garbage words (see file)
 print("Downloaded dictionary")
 print(",".join(words[:10]), "...")
+=======
+from jax_pixtral.inference import get_completions
+from jax_pixtral.dataset import load_dataset, save_dataset
+
+import random as rand
+
+
+# create prompts. make a dataset to fine-tune pixtral to respond in all caps if the user does.
+words = "Hi Hello Hey Uh Sup So lmao what lololol hi".split()
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 prompts = []
 
 # duplicate n times to create a batch of (BATCH_SIZE) prompts
 BATCH_SIZE = 32
+<<<<<<< HEAD
 BATCH_COUNT = 64
 batches = []
 for _ in range(BATCH_COUNT):
@@ -47,10 +59,31 @@ for _ in range(BATCH_COUNT):
         ])
     batches.append(batch)
 print(f"Created {len(batches)} batches of {len(batches[0])} prompts")
+=======
+for i in range(BATCH_SIZE):
+    random_word = rand.choice(words)
+    is_upper = rand.random() > 0.5
+    if is_upper:
+        random_word = random_word.upper()
+    prompts.append([
+      {
+          "role":
+          "user",
+          "content": [
+              {
+                  "type": "text",
+                  "text": random_word,
+              },
+          ],
+      },
+    ])
+    
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 
 
 
 ### run inference on the entire batch
+<<<<<<< HEAD
 ## preload params
 load_start = time.time()
 print("Loading params...")
@@ -67,6 +100,11 @@ for i, batch in enumerate(batches):
     completions = completions + batch_completions
     print(f"added {BATCH_SIZE} completions. {i}/{BATCH_COUNT}")
 print(len(completions))
+=======
+completions = get_completions(prompts, max_tokens=64, temp=1.0,
+                              tokenizer_config_dir="./pixtral", return_full_context=True)
+print(completions[0])
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 
 ### transform completions
 def assistant_response_transform(completion):

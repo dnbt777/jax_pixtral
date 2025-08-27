@@ -11,7 +11,11 @@ import jax.random as jrand
 
 from jax_pixtral.load_model import load_params, fast_load_params
 
+<<<<<<< HEAD
 from jax_pixtral.forward_training import batch_parse_completions, init_lora, save_lora, text_lora_loss_fn, adam, muon
+=======
+from jax_pixtral.forward_training import batch_parse_completions, init_lora, save_lora, text_lora_loss_fn
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 from jax_pixtral.inference import preloaded_get_completions
 
 from jax_pixtral.dataset import load_dataset, save_dataset
@@ -45,14 +49,22 @@ vocab_size = 131072 # from pixtral
 dense_in_dim = channel_dim
 dense_out_dim = vocab_size
 # attn (qkvo) lora
+<<<<<<< HEAD
 attn_rank = 4
+=======
+attn_rank = 1
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 layers = 40
 k_proj_shape = (5120, 1024)
 o_proj_shape = (4096, 5120)
 q_proj_shape = (5120, 4096)
 v_proj_shape = (5120, 1024)
 # xfmr block lora
+<<<<<<< HEAD
 block_rank = 4
+=======
+block_rank = 1
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 attn_norm_size = 5120
 ffw_norm_size = 5120
 ffw1_shape = (14336, 5120)[::-1]
@@ -93,6 +105,7 @@ print(f"Loaded params in {time.time() - load_start:.2f}s")
 #### begin fine-tuning
 # hyperparameters and other fine tuning advice:
 # https://mistral.ai/news/unlocking-potential-vision-language-models-satellite-imagery-fine-tuning
+<<<<<<< HEAD
 # init data
 datapoints = batch_completions["tokens"].shape[0]
 dataset_idxs = jnp.arange(datapoints)
@@ -142,6 +155,27 @@ for epoch in range(epochs):
                 batch_completions["padding_mask"][val_start_idx:val_end_idx],
             )
             print(f"it: {i} || val_loss: {val_loss.item():.5f} || lr: {lr:.7f}")
+=======
+for i in range(100):
+    ## get loss and grads
+    loss, grads = jax.value_and_grad(text_lora_loss_fn, argnums=1)(
+        pixtral_params,
+        lora_params, # arg 1
+        batch_completions["tokens"],
+        batch_completions["context_mask"], batch_completions["padding_mask"],
+        rolling_key
+    )
+    rolling_key, _ = jrand.split(rolling_key)
+    
+    ## print grads (shows how params are learning) (uncomment to enable)
+    print(jax.tree_util.tree_map(lambda g: jax.numpy.linalg.norm(g), grads))
+    
+    ## update (simple SGD)
+    print(loss, type(loss))
+    lr = 3e-5 * (0.5 + jnp.abs(jnp.cos(i/20))) * (0.998**i)
+    print(f"it: {i} || loss: {loss[0]:.5f} || lr: {lr:.7f}")
+    lora_params = jax.tree_util.tree_map(lambda p, g: p - lr*g, lora_params, grads) # TODO implement adam, adamw, muon
+>>>>>>> bdeaa17960f401922f1fb29b4881b4d2f630bb2e
 
 
 
