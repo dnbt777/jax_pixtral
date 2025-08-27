@@ -306,6 +306,7 @@ def preloaded_batch_parse_completions(tokenizer, completions: list) -> dict:
         new_completion_length = largest_completion_tokens
         padding_length = new_completion_length - initial_completion_length
         batch_completions["tokens"][i] = jnp.append(jnp.array(batch_completions["tokens"][i]), jnp.zeros((padding_length,), dtype=int))
+        batch_completions["context_mask"][i] = jnp.append(jnp.array(batch_completions["context_mask"][i]), jnp.ones((padding_length,), dtype=int))
         padding_mask = (jnp.arange(new_completion_length) >= initial_completion_length).astype(bool) # mask padding with True
         assert jnp.sum(padding_mask).astype(int) == padding_length
         batch_completions["padding_mask"][i] = padding_mask
@@ -411,9 +412,37 @@ def cross_entropy_loss(
     batch_target_tokens: jax.Array,
     batch_loss_mask: jax.Array
 ) -> float:
-    batch_next_token_logprobs = jax.nn.log_softmax(batch_next_token_logits, axis=-1)
+    batch_next_token_logprobs = jax.nn.log_softmax(batch_next_token_logits.astype(jnp.float32), axis=-1) # do softmax in float32
     batch_sub_crossentropies = jnp.take_along_axis(batch_next_token_logprobs, batch_target_tokens[..., None], axis=-1) # B, ->T<-, C
-    return -jnp.sum(jnp.where(batch_loss_mask, jnp.bfloat16(0), batch_sub_crossentropies))
+    N = jnp.maximum(1.0, jnp.sum(~batch_loss_mask))
+    cross_entropy_loss = -jnp.sum(jnp.where(batch_loss_mask, jnp.bfloat16(0), batch_sub_crossentropies)) / N
+    return cross_entropy_loss.astype(jnp.bfloat16)
+
+
+
+
+
+# https://optimization.cbe.cornell.edu/index.php?title=Adam
+@partial(jax.jit, donate_argnames=["vi", "si"])
+def adam(grads, vi, si, t, lr, beta1, beta2, eps=1e-5):
+    grads = jax.tree_util.tree_map(lambda x: x.astype(jnp.float32), grads)
+    vi = jax.tree_util.tree_map(lambda x: x.astype(jnp.float32), vi)
+    si = jax.tree_util.tree_map(lambda x: x.astype(jnp.float32), si)
+    v = jax.tree_util.tree_map(lambda a, b: beta1*a + (1 - beta1)*b, vi, grads)
+    v_hat = jax.tree_util.tree_map(lambda a: a / (1 - beta1**t), v)
+    s = jax.tree_util.tree_map(lambda a, b: beta2*a + (1 - beta2)*b*b, si, grads)
+    s_hat = jax.tree_util.tree_map(lambda a: a / (1 - beta2**t), s)
+    update = jax.tree_util.tree_map(lambda a, b: -lr*(a / jnp.sqrt(b + eps)), v_hat, s_hat)
+    update = jax.tree_util.tree_map(lambda x: x.astype(jnp.bfloat16), update)
+    return update, v, s
+
+
+
+# https://kellerjordan.github.io/posts/muon/
+def muon(grads):
+    pass # todo
+
+
 
 
 
@@ -424,7 +453,6 @@ def text_lora_loss_fn(
      batch_message_tokens: jax.Array,
      batch_context_mask: jax.Array,
      batch_padding_mask: jax.Array,
-     key: jax.Array
 ) -> float:
     #pixtral_params = merge_lora(pixtral_params, lora_params) # not mem efficient in backwards
     # forward

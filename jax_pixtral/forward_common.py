@@ -104,14 +104,19 @@ def transformer_block(
     block_lora_params=None
 ) -> jax.Array:
     # same block for vision encoder AND transformer
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
+    # attention norm
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.attnnorm)
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight + block_lora_params.block.attnnorm)
+    else:
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
+    # attention
     residual_BTC = pixtral_attention(block_params, residual_BTC, freqs_1d, query_heads, kv_heads, head_dim, attn_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) ## ff norm
+    # ff norm
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.ffwnorm)
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight + block_lora_params.block.ffwnorm)
+    else:
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) ## ff norm
     
     if block_lora_params:
         residual_BTC = feed_forward_lora(block_params, block_lora_params, residual_BTC)
@@ -371,14 +376,22 @@ def layernorm(hidden_state_BTC: jax.Array, weight: jax.Array, bias: jax.Array) -
 @jax.jit
 def RMSnorm(hidden_state: jax.Array, weight: jax.Array) -> jax.Array:
     eps = 1e-5
-    hidden_state = hidden_state
-    weight = weight
     squared = jax.lax.pow(hidden_state, 2)
     mean = (jnp.mean(squared, axis=-1, keepdims=True) + eps)
     rsqrt = jax.lax.rsqrt(mean)
     hidden_state = jnp.multiply(hidden_state, rsqrt)
-    hidden_state = hidden_state
     hidden_state = jnp.multiply(hidden_state, weight)
+    return hidden_state
+
+
+
+def RMSnorm_lora(hidden_state: jax.Array, weight: jax.Array, lora_weight: jax.Array) -> jax.Array:
+    eps = 1e-5
+    squared = jax.lax.pow(hidden_state, 2)
+    mean = (jnp.mean(squared, axis=-1, keepdims=True) + eps)
+    rsqrt = jax.lax.rsqrt(mean)
+    hidden_state = jnp.multiply(hidden_state, rsqrt)
+    hidden_state = jnp.multiply(hidden_state, weight) + jnp.multiply(hidden_state, lora_weight)
     return hidden_state
 
 

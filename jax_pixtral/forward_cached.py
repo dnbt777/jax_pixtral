@@ -188,16 +188,21 @@ def transformer_block_cached(
         including doing pixtral_attention_cached.
     """
     # same block for vision encoder AND transformer
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
+    # attention norm
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.attnnorm)
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight + block_lora_params.block.attnnorm)
+    else:
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.attention_norm_weight) ## attention norm
+    # attention
     residual_BTC, K_cache, V_cache = pixtral_attention_cached(block_params, residual_BTC, rope_cos, rope_sin, query_heads, kv_heads, head_dim, attn_scale,
                                                             K_cache, V_cache, batch_next_token_indices, padding_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
-    residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) ## ff norm
+    # ff norm
     if block_lora_params:
-        residual_BTC = residual_BTC + RMSnorm(hidden_state_BTC, block_lora_params.block.ffwnorm)
-    
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight + block_lora_params.block.ffwnorm)
+    else:
+        residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight) ## ff norm
+    # ff
     if block_lora_params:
         residual_BTC = feed_forward_lora(block_params, block_lora_params, residual_BTC)
     else:

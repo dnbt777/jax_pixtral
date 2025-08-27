@@ -122,7 +122,7 @@ print(f"Loaded params in {time.time() - load_start:.2f}s")
 #### begin fine-tuning
 # hyperparameters and other fine tuning advice:
 # https://mistral.ai/news/unlocking-potential-vision-language-models-satellite-imagery-fine-tuning
-for i in range(100):
+for i in range(1000):
     ## get loss and grads
     loss, grads = jax.value_and_grad(text_lora_loss_fn, argnums=1)(
         pixtral_params,
@@ -137,7 +137,7 @@ for i in range(100):
     # print(jax.tree_util.tree_map(lambda g: jax.numpy.linalg.norm(g), grads))
     
     ## update (simple SGD)
-    lr = 1e-3 * (0.5 + jnp.abs(jnp.cos(i/20))) * (0.995**i)
+    lr = 1e-6 * (0.5 + jnp.abs(jnp.cos(i/20))) * (0.995**i)
     print(f"it: {i} || loss: {loss:.5f} || lr: {lr:.7f}")
     lora_params = jax.tree_util.tree_map(lambda p, g: p - lr*g, lora_params, grads) # TODO implement adam, adamw, muon
 
