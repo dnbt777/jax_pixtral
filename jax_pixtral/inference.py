@@ -433,16 +433,41 @@ def preloaded_get_completions(
     tokenizer_config_dir: str = None,
     return_full_context: bool = False,
 ) -> List[str]:
+    tokenizer, encode, decode = load_tokenizer(tokenizer_config_dir)
+
+    batch_prompts = preloaded_batch_parse_prompts(tokenizer, prompts, max_tokens)
+    
+    batch_prompts = inference(pixtral_params, batch_prompts, max_tokens, temp, seed=seed, verbose=verbose, color=color, lora_params=lora_params)
+    
+    completions = [decode(split_list(completion_tokens, EOS_TOKEN_ID)[0]) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
+    if return_full_context:
+        full_contexts_list = [
+            prompt + [{"role":"assistant","content": [{"type": "text","text": completions[i]}]}]
+            for i, prompt in enumerate(prompts)
+        ]
+        return full_contexts_list
+    else:
+        return completions
+
+
+
+def inference(
+    pixtral_params,
+    batch_prompts,
+    max_tokens: int,
+    temp: float,
+    seed: float = 0,
+    verbose: bool = False,
+    color: Optional[Tuple[int, int, int]] = None,
+    lora_params: Optional[LoRA] = None,
+):
+    # set up or disable logging
     log = lambda *args: None
     if verbose:
         log = print
 
-    tokenizer, encode, decode = load_tokenizer(tokenizer_config_dir)
-
-    batch_prompts = preloaded_batch_parse_prompts(tokenizer, prompts, max_tokens)
-    prompt_count = len(prompts)
-    
     ## run inference loop
+    prompt_count = batch_prompts["tokens"].shape[0]
     EOS_TOKEN_ID = 2
     key = jrand.PRNGKey(seed)
     if color:
@@ -510,16 +535,55 @@ def preloaded_get_completions(
     log("tokens generated: ", tokens_generated)
     log("generation duration", duration)
     log("tok/sec", (tokens_generated - 2*prompt_count)/duration) # dont count the 2 tokens generated during prefill + jit
-    completions = [decode(split_list(completion_tokens, EOS_TOKEN_ID)[0]) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
-    if return_full_context:
-        full_contexts_list = [
-            prompt + [{"role":"assistant","content": [{"type": "text","text": completions[i]}]}]
-            for i, prompt in enumerate(prompts)
-        ]
-        return full_contexts_list
-    else:
-        return completions
+    return batch_prompts
 
+
+
+
+
+
+
+def batch_format_token_prompts(token_batches: list, max_tokens: int) -> dict:
+    # tokenize prompt
+    # SoA (for logic related (not performance) reasons)
+    batches = len(token_batches)
+    batch_prompts_dict = {
+        "initial_prompt_tokens" : [],
+        "processed_images"      : [],
+        "image_start_indices"   : [],
+        "completion"            : [],
+        "completion_tokens"     : jnp.zeros((batches,max_tokens), dtype=int),
+        "tokens"                : [],
+        "next_token_index"      : [],
+        "padding_mask"          : [],
+    }
+
+    # store processed prompts and initialize values
+    for token_batch in token_batches:
+        batch_prompts_dict["initial_prompt_tokens"].append(token_batch)
+        batch_prompts_dict["completion"].append("") # initialize completion as blank
+        batch_prompts_dict["tokens"].append(token_batch)
+        batch_prompts_dict["next_token_index"].append(len(token_batch))
+        batch_prompts_dict["padding_mask"].append(None)
+
+    # pad all prompts to be the size of the largest prompt + max_tokens
+    largest_prompt_tokens = max([len(prompt) for prompt in batch_prompts_dict["initial_prompt_tokens"]]) # pad ALL prompts to this size
+    prompt_count = len(token_batches)
+    for i in range(prompt_count):
+        initial_prompt_length = len(batch_prompts_dict["initial_prompt_tokens"][i])
+        new_prompt_length = max_tokens + largest_prompt_tokens
+        padding_length = new_prompt_length - initial_prompt_length
+        batch_prompts_dict["tokens"][i] = jnp.append(jnp.array(batch_prompts_dict["tokens"][i]), jnp.zeros((padding_length,), dtype=int))
+        padding_mask = (jnp.arange(new_prompt_length) >= initial_prompt_length).astype(bool) # mask padding with True
+        assert jnp.sum(padding_mask).astype(int) == padding_length
+        batch_prompts_dict["padding_mask"][i] = padding_mask
+
+    # stack jax arrays into a batch
+    batch_prompts_dict["tokens"] = jnp.stack(batch_prompts_dict["tokens"]) # list[arrayT] -> arrayBT
+    batch_prompts_dict["padding_mask"] = jnp.stack(batch_prompts_dict["padding_mask"]) # list[arrayT] -> arrayBT
+    batch_prompts_dict["next_token_index"] = jnp.array(batch_prompts_dict["next_token_index"])
+
+    return batch_prompts_dict
 
 
 
