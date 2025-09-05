@@ -437,9 +437,11 @@ def preloaded_get_completions(
 
     batch_prompts = preloaded_batch_parse_prompts(tokenizer, prompts, max_tokens)
     
-    batch_prompts = inference(pixtral_params, batch_prompts, max_tokens, temp, seed=seed, verbose=verbose, color=color, lora_params=lora_params)
-    
-    completions = [decode(split_list(completion_tokens, EOS_TOKEN_ID)[0]) for completion_tokens in batch_prompts["completion_tokens"][:, :i]]
+    batch_prompts = inference(pixtral_params, batch_prompts, max_tokens, temp,
+                              seed=seed, verbose=verbose, color=color, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
+
+    EOS_TOKEN_ID = 2
+    completions = [decode(split_list(completion_tokens, EOS_TOKEN_ID)[0]) for completion_tokens in batch_prompts["completion_tokens"]]
     if return_full_context:
         full_contexts_list = [
             prompt + [{"role":"assistant","content": [{"type": "text","text": completions[i]}]}]
@@ -460,11 +462,16 @@ def inference(
     verbose: bool = False,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
+    tokenizer_config_dir: str = None,
 ):
     # set up or disable logging
     log = lambda *args: None
     if verbose:
         log = print
+
+    # decode() required for single-batch
+    if tokenizer_config_dir:
+        tokenizer, encode, decode = load_tokenizer(tokenizer_config_dir)
 
     ## run inference loop
     prompt_count = batch_prompts["tokens"].shape[0]

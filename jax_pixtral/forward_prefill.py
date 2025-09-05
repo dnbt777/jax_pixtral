@@ -127,6 +127,7 @@ def forward_prefill(
         batch_next_token_indices: jax.Array,
         batch_attn_mask: jax.Array,
         lora_params: LoRA=None,
+        sae=None,
 ) -> Tuple[jax.Array, KVCache]:
     B, T, C = hidden_state_BTC.shape
     head_dim = 128 # params.json
@@ -146,11 +147,13 @@ def forward_prefill(
             hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=block_lora_params)
             return hidden_state, (K, V)
         hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, (model_params.transformer.transformer_layers, lora_params.layers))
+    elif sae:
+        pass # todo
     else:
-            def scanf(hidden_state, xfmr_block_params):
-                hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=None)
-                return hidden_state, (K, V)
-            hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, model_params.transformer.transformer_layers)
+        def scanf(hidden_state, xfmr_block_params):
+            hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=None)
+            return hidden_state, (K, V)
+        hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, model_params.transformer.transformer_layers)
 
     # remap KVCache to appropriate structure
     post_scan_remap = lambda xs_tuple: jnp.stack(xs_tuple) # (K0, K1, K2..Kn) => jax.Array of shape (n,*K.shape)
@@ -181,10 +184,11 @@ def text_forward_prefill(
         batch_tokens: jax.Array,
         batch_next_token_indices: jax.Array,
         batch_attn_mask: jax.Array,
-        lora_params: LoRA = None
+        lora_params: LoRA = None,
+        sae = None,
 ) -> Tuple[jax.Array, KVCache]:
     hidden_state_BTC = text_embedding(model_params, batch_tokens)
-    return forward_prefill(model_params, hidden_state_BTC, batch_next_token_indices, batch_attn_mask, lora_params=lora_params)
+    return forward_prefill(model_params, hidden_state_BTC, batch_next_token_indices, batch_attn_mask, lora_params=lora_params, sae=sae)
 
 
 
@@ -195,10 +199,11 @@ def mm_forward_prefill(
      batch_intext_image_start_indices: jax.Array, 
      batch_next_token_indices: jax.Array, 
      batch_attn_mask: jax.Array, 
-     lora_params: LoRA = None
+     lora_params: LoRA = None,
+     sae = None,
 ) -> Tuple[jax.Array, KVCache]:
     hidden_state_BTC = multimodal_embedding(model_params, batch_tokens, batch_image_sets, batch_intext_image_start_indices)
-    return forward_prefill(model_params, hidden_state_BTC, batch_next_token_indices, batch_attn_mask, lora_params=lora_params)
+    return forward_prefill(model_params, hidden_state_BTC, batch_next_token_indices, batch_attn_mask, lora_params=lora_params, sae=sae)
 
 
 
@@ -211,18 +216,19 @@ def inference_prefill(
         batch_next_token_indices: jax.Array, 
         batch_attn_mask: jax.Array, 
         temperature: float, 
-        lora_params: LoRA = None
+        lora_params: LoRA = None,
+        sae = None,
 ) -> Tuple[jax.Array, KVCache]:
     if any([len(image_set) > 0 for image_set in batch_image_sets]):
             batch_next_token_logit, kvcache = mm_forward_prefill(
                     pixtral_params, batch_tokens, batch_image_sets,
                     batch_intext_image_start_indices, batch_next_token_indices, batch_attn_mask,
-                    lora_params=lora_params
+                    lora_params=lora_params, sae=sae
             )
     else:
             batch_next_token_logit, kvcache = text_forward_prefill(
                     pixtral_params, batch_tokens,
-                batch_next_token_indices, batch_attn_mask, lora_params=lora_params
+                batch_next_token_indices, batch_attn_mask, lora_params=lora_params, sae=sae
             )
     batch_next_token = jrand.categorical(key, batch_next_token_logit/max(temperature, 1e-5), axis=-1)
     return batch_next_token, kvcache

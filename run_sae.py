@@ -185,12 +185,26 @@ prompt = [
     {"role" : "user", "content" : { "type" : "text", "text": prompt}}
 ]
 
+
+class SAE(NamedTuple):
+    sae_params: SaeParams
+    concept_vector: jax.Array
+    layer: int
+
+
+sae = SAE(
+    sae_params=sae_params,
+    concept_vector=concept_vector,
+    layer=layer
+)
+
+
 max_tokens = 64
 completion = preloaded_get_completion(
     pixtral_params,
     prompt,
     max_tokens,
-    concept_vector=concept_vector, # TODO IMPLEMENT
+    sae=sae, # TODO IMPLEMENT
 )
 print("nixtral: ", completion)
 

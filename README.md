@@ -2,6 +2,7 @@
 
 ## features
 - batch LoRA training and inference
+- sparse autoencoder training, feature extraction, and inference
 - live chat (supports images, commands, LoRAs from training)
 - simple code, simple api, and example scripts (run_*.py)
 
@@ -23,9 +24,9 @@ It is mostly from scratch, but not 100%. Besides jax, it uses:
 
 It's not perfect by any means. Improvement suggestions/feedback are very welcome
 
-Optimization is WIP. Current throughput (A40): 
-- single completion: 7 tok/s
-- batched: 324 tok/s
+Optimization is WIP. Current throughput (1xH100 PCIe): 
+- single completion: 21 tok/s
+- batched: 2434 tok/s
 
 
 
@@ -71,9 +72,8 @@ from here, you can run/modify the following example scripts:
 
 ## environment
 This was tested in the following environment:
-- runpod A40, EU-SE-1 region, with the pytorch cuda12.4 template and 60GB storage volume
-
-This costs ~$0.40/hr if you would like to mimic this exact setup.
+- runpod A40, EU-SE-1 region, with the pytorch cuda12.4 template and 60GB storage volume (This costs ~$0.40/hr if you would like to mimic this exact setup.)
+- benchmarked on 1xH100PCIe with cuda12.4 + 60GB storage volume
 
 Why use a 60GB volume?
 - The default size doesn't have enough storage to download the pixtral weights
@@ -83,7 +83,7 @@ Why use a 60GB volume?
 
 ## known bugs/limitations
 - when streaming completions (i.e. in the chat), emojis dont render properly (see the header img in this readme)
-- single-batch tok/sec is low (7tok/sec on an A40)
+- single-batch tok/sec is low (21tok/sec on an H100)
 - OOM for ~4+ images in the chat (A40)
 - support for models besides pixtral 12B not yet added
 - it feels like attention leaks between images. maybe a masking issue
