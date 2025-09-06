@@ -27,6 +27,7 @@ from typing import List, Tuple, Optional
 from jax_pixtral.model_types import *
 from jax_pixtral.lora_types import LoRA
 from jax_pixtral.forward_common import *
+from jax_pixtral.sae import sae_intervention
 
 
 
@@ -38,7 +39,7 @@ def pixtral_attention_prefill(
         freqs: jax.Array,
         query_heads: int, kv_heads: int, head_dim: int,
         attn_mask: jax.Array,
-        block_lora_params: LoRA=None
+        block_lora_params: LoRA=None,
 ) -> Tuple[jax.Array, jax.Array, jax.Array]:
     # compute qkv
     Q = hidden_state_BTC @ block_params.attention_wq_weight.T
@@ -97,7 +98,9 @@ def transformer_block_prefill(
         freqs_1d: jax.Array,
         query_heads: int, kv_heads: int, head_dim: int,
         attn_mask: jax.Array,
-        block_lora_params: LoRA=None) -> jax.Array:
+        block_lora_params: LoRA=None,
+        sae = None,
+) -> jax.Array:
     # attention norm
     if block_lora_params:
         residual_BTC = RMSnorm_lora(hidden_state_BTC, block_params.attention_norm_weight, block_lora_params.block.attnnorm)
@@ -106,6 +109,9 @@ def transformer_block_prefill(
     ## attention
     residual_BTC, K, V = pixtral_attention_prefill(block_params, residual_BTC, freqs_1d, query_heads, kv_heads, head_dim, attn_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
+    if sae:
+        ## perform SAE intervention (residual == 1 in partial_block function in sae.py)
+        hidden_state_BTC = sae_intervention(sae, hidden_state_BTC) # encodes, adds concept vector or clamps, then decodes
     ## ff norm
     if block_lora_params:
         residual_BTC = RMSnorm_lora(hidden_state_BTC, block_params.ffn_norm_weight, block_lora_params.block.ffwnorm)
@@ -142,16 +148,38 @@ def forward_prefill(
     # head dim defined above - it's used to calculate rope1d frequencies
     # scan compiles faster than a for loop
     if lora_params:
+        # apply lora
         def scanf(hidden_state, carry):
             xfmr_block_params, block_lora_params = carry
             hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=block_lora_params)
             return hidden_state, (K, V)
         hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, (model_params.transformer.transformer_layers, lora_params.layers))
     elif sae:
-        pass # todo
+        # apply sae
+        sae_layer = int(sae.layer)
+        def do_sae(operand):
+            xfmr_block_params, hidden_state = operand
+            return transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, sae=sae)
+
+        def no_sae(operand):
+            xfmr_block_params, hidden_state = operand
+            return transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, sae=None)
+        
+        def scanf(hidden_state, carry):
+            is_sae_layer, xfmr_block_params = carry
+            hidden_state, K, V = jax.lax.cond(
+                is_sae_layer,
+                do_sae,
+                no_sae,
+                operand=(xfmr_block_params,hidden_state)
+            )
+            return hidden_state, (K, V)
+        layer_count = model_params.transformer.transformer_layers.ffn_norm_weight.shape[0]
+        hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, (jnp.arange(layer_count) == sae_layer, model_params.transformer.transformer_layers))
     else:
+        # vanilla
         def scanf(hidden_state, xfmr_block_params):
-            hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask, block_lora_params=None)
+            hidden_state, K, V = transformer_block_prefill(xfmr_block_params, hidden_state, freqs, Hq, Hk, head_dim, attn_mask)
             return hidden_state, (K, V)
         hidden_state_BTC, kv_pairs = jax.lax.scan(scanf, hidden_state_BTC, model_params.transformer.transformer_layers)
 

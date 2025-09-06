@@ -12,6 +12,8 @@ import time # logging
 
 
 from jax_pixtral.sae import *
+from jax_pixtral.forward_training import MSE
+
 
 # sources
 # [0] https://cdn.openai.com/papers/sparse-autoencoders.pdf
@@ -26,7 +28,7 @@ seed = 0
 # generate batches of tokens of len=n from just <s>
 from jax_pixtral.inference import *
 BOS_TOKEN_ID = 1
-max_tokens = 64
+max_tokens = 256
 batches = 32
 token_batches = [[BOS_TOKEN_ID] for _ in range(batches)]
 batch_prompts = batch_format_token_prompts(token_batches, max_tokens)
@@ -47,9 +49,6 @@ batch_completions = inference(pixtral_params, batch_prompts, max_tokens, temp, s
 
 
 
-
-
-
 # get activations from residual stream [0]
 # context length = 64 [0]
 target_layer = 32 # out of 40. target later layers approximately 80% of the way through the model [0]
@@ -66,41 +65,13 @@ sae_params = init_sae(key, in_size, hidden_size, out_size)
 
 
 
-## train sae on dataset's activations
-def MSE(yhat, y):
-    return jnp.mean((y - yhat)**2)
-
-# do the full forward - encode and decode and get loss
-def sae_forward(sae_params, residual_activations, l1=1e-3):
-    # norm by mean over channel https://cdn.openai.com/papers/sparse-autoencoders.pdf
-    mean = jnp.mean(residual_activations, axis=-1, keepdims=True)
-    normalized = residual_activations - mean
-    encoded = jax.nn.relu(normalized @ sae_params.in_layer)
-    decoded = encoded @ sae_params.hidden_layer
-    reconstruction = MSE(decoded, normalized)
-    sparsity = l1*jnp.mean(jnp.abs(encoded))
-    return reconstruction + sparsity
-
-# get the activations in the SAE
-# used for finding features
-def sae_encode(sae_params, residual_activations):
-    mean = jnp.mean(residual_activations, axis=-1, keepdims=True)
-    normalized = residual_activations - mean
-    encoded = jax.nn.relu(normalized @ sae_params.in_layer)
-    return encoded # from here youd find the top_K
-
-def sae_decode(sae_params, encoded_activations):
-    return encoded_activations @ sae_params.hidden_layer
-
-
-
 # train loop
 v = jax.tree_util.tree_map(lambda x: 0, sae_params)
 s = jax.tree_util.tree_map(lambda x: 0, sae_params)
 beta1 = 0.98 # direction
 beta2 = 0.99 # magnitude
-lr = 1e-5
-iterations = 100
+lr = 1e-3
+iterations = 1000
 
 for i in range(1, iterations+1):
     loss, grads = jax.value_and_grad(sae_forward)(sae_params, residual_activations)
@@ -109,7 +80,7 @@ for i in range(1, iterations+1):
 
     sae_params = jax.tree_util.tree_map(lambda p, u: p + u, sae_params, updates)
 
-    print(loss)
+    print(i, loss)
 
 
 
@@ -174,28 +145,31 @@ print(f"the top 20% of activations are responsible for {top_sae_activation_mass.
 
 
 # decode using SAE params to get the vector to be added during inference
-concept_vector = sae_decode(sae_params, mean_sae_activation_C)
+concept_vector = mean_sae_activation_C
+concept_vector = jnp.where(
+    concept_vector >= sorted_sae_activations_C[top_k_neurons],
+    concept_vector,
+    jnp.zeros_like(concept_vector),
+)
+print("filtering activation value:", sorted_sae_activations_C[top_k_neurons])
 
+
+# assert - does doing nothing do nothing?
+concept_vector = jnp.zeros_like(concept_vector) # DELETE AFTER TESTING
 
 
 # run inference
-prompt = "Can you explain the attention mechanism in xfmrs to me?"
+prompt = "Name a random piece of software."
 print(prompt)
 prompt = [
-    {"role" : "user", "content" : { "type" : "text", "text": prompt}}
+    {"role" : "user", "content" : [{ "type" : "text", "text": prompt}]}
 ]
-
-
-class SAE(NamedTuple):
-    sae_params: SaeParams
-    concept_vector: jax.Array
-    layer: int
 
 
 sae = SAE(
     sae_params=sae_params,
     concept_vector=concept_vector,
-    layer=layer
+    layer=target_layer
 )
 
 
@@ -204,6 +178,7 @@ completion = preloaded_get_completion(
     pixtral_params,
     prompt,
     max_tokens,
+    tokenizer_config_dir="./pixtral",
     sae=sae, # TODO IMPLEMENT
 )
 print("nixtral: ", completion)

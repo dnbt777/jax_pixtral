@@ -31,6 +31,7 @@ from typing import List, Optional, Tuple
 from jax_pixtral.model_types import *
 from jax_pixtral.forward_common import *
 from jax_pixtral.lora_types import LoRA
+from jax_pixtral.sae import *
 
 
 
@@ -106,7 +107,7 @@ def pixtral_attention_cached(
     K_cache: jax.Array, V_cache: jax.Array,
     batch_next_token_indices: jax.Array,
     padding_mask: jax.Array,
-    block_lora_params=None
+    block_lora_params=None,
 ) -> Tuple[jax.Array, jax.Array, jax.Array]:
     """
         does attention over a single layer.
@@ -181,7 +182,8 @@ def transformer_block_cached(
     K_cache: jax.Array, V_cache: jax.Array,
     batch_next_token_indices: jax.Array,
     padding_mask: jax.Array,
-    block_lora_params=None
+    block_lora_params=None,
+    sae=None,
 ) -> Tuple[jax.Array, jax.Array, jax.Array]:
     """ 
         updates the hidden state and kvcache with the current xfmr block,
@@ -197,6 +199,8 @@ def transformer_block_cached(
     residual_BTC, K_cache, V_cache = pixtral_attention_cached(block_params, residual_BTC, rope_cos, rope_sin, query_heads, kv_heads, head_dim, attn_scale,
                                                             K_cache, V_cache, batch_next_token_indices, padding_mask, block_lora_params=block_lora_params)
     hidden_state_BTC = hidden_state_BTC + residual_BTC
+    if sae:
+        hidden_state_BTC = sae_intervention(sae, hidden_state_BTC)
     # ff norm
     if block_lora_params:
         residual_BTC = RMSnorm(hidden_state_BTC, block_params.ffn_norm_weight + block_lora_params.block.ffwnorm)
@@ -213,13 +217,15 @@ def transformer_block_cached(
 
 
 
-@partial(jax.jit, donate_argnames=["kvcache"])
+@partial(jax.jit, static_argnames=["sae_layer"], donate_argnames=["kvcache"])
 def forward_cached(
     model_params: PixtralModel,
     next_token_batch: jax.Array,
     kvcache: KVCache,
     batch_next_token_indices: jax.Array,
-    lora_params: Optional[LoRA]=None
+    lora_params: Optional[LoRA]=None,
+    sae=None,
+    sae_layer=None,
 ) -> Tuple[jax.Array, KVCache]:
     """ computes pixtral's forward. uses a kvcache. requires prefill first. """
     ## token embeddings
@@ -255,6 +261,37 @@ def forward_cached(
             model_params.transformer.transformer_layers, # (40, ...)
             lora_params.layers # (40, ...)
         )
+    elif sae:
+        def do_sae(operand):
+            block_params, hidden_state, kvcache, block_idx = operand
+            return transformer_block_cached(block_params, hidden_state, rope_cos, rope_sin, Hq, Hk, head_dim, attn_scale,
+                                                              kvcache.K[block_idx], kvcache.V[block_idx],
+                                                              batch_next_token_indices, padding_mask, sae=sae)
+
+        def no_sae(operand):
+            block_params, hidden_state, kvcache, block_idx = operand
+            return transformer_block_cached(block_params, hidden_state, rope_cos, rope_sin, Hq, Hk, head_dim, attn_scale,
+                                                              kvcache.K[block_idx], kvcache.V[block_idx],
+                                                              batch_next_token_indices, padding_mask, sae=None)
+        def scanf(state, xfmr_block_data):
+            hidden_state, kvcache = state
+            block_idx, is_sae_layer, block_params = xfmr_block_data
+            hidden_state, K, V = jax.lax.cond(
+                is_sae_layer,
+                do_sae,
+                no_sae,
+                operand=(block_params, hidden_state, kvcache, block_idx)
+            )
+            kvcache = kvcache._replace(
+                K=kvcache.K.at[block_idx].set(K),
+                V=kvcache.V.at[block_idx].set(V),
+            ) # optimization: just update the next token, not the whole block's kvcache
+            return (hidden_state, kvcache), None
+        xfmr_blocks_data = (
+            jnp.arange(layer_count),
+            jnp.arange(layer_count) == sae_layer,
+            model_params.transformer.transformer_layers, # (40, ...)
+        )
     else:
         def scanf(state, xfmr_block_data):
             hidden_state, kvcache = state
@@ -283,7 +320,7 @@ def forward_cached(
 
 
 
-@partial(jax.jit, static_argnames=["temperature"], donate_argnames=["kvcache"])
+@partial(jax.jit, static_argnames=["temperature", "sae_layer"], donate_argnames=["kvcache"])
 def inference_cached(
     key: jax.Array,
     pixtral_params: PixtralModel,
@@ -291,12 +328,15 @@ def inference_cached(
     kvcache: KVCache,
     batch_next_token_indices: jax.Array,
     temperature: float,
-    lora_params: Optional[LoRA]=None
+    lora_params: Optional[LoRA]=None,
+    sae = None,
+    sae_layer = None,
 ) -> Tuple[jax.Array, KVCache]:
     """ runs inference using an already-prefilled prompt kvcache """
     # get logits
     next_token_batch_logits, kvcache = forward_cached(pixtral_params, next_token_batch,
-                                                       kvcache, batch_next_token_indices, lora_params=lora_params) # B, 1, C
+                                                      kvcache, batch_next_token_indices,
+                                                      lora_params=lora_params, sae=sae, sae_layer=sae_layer) # B, 1, C
     # take random sample (weighted)
     next_token_batch = jrand.categorical(key, next_token_batch_logits/max(temperature, 1e-5), axis=-1) # (B,1)
     return jnp.squeeze(next_token_batch, axis=-1), kvcache

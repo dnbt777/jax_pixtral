@@ -384,6 +384,7 @@ def preloaded_get_completion(
     verbose: bool = True,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
+    sae = None,
     tokenizer_config_dir: str = None,
     return_full_context: bool = False,
 ) -> str:
@@ -396,6 +397,7 @@ def preloaded_get_completion(
         verbose=verbose,
         color=color,
         lora_params=lora_params,
+        sae = sae,
         tokenizer_config_dir=tokenizer_config_dir,
         return_full_context=return_full_context,
     )[0]
@@ -430,6 +432,7 @@ def preloaded_get_completions(
     verbose: bool = True,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
+    sae = None,
     tokenizer_config_dir: str = None,
     return_full_context: bool = False,
 ) -> List[str]:
@@ -438,7 +441,8 @@ def preloaded_get_completions(
     batch_prompts = preloaded_batch_parse_prompts(tokenizer, prompts, max_tokens)
     
     batch_prompts = inference(pixtral_params, batch_prompts, max_tokens, temp,
-                              seed=seed, verbose=verbose, color=color, lora_params=lora_params, tokenizer_config_dir=tokenizer_config_dir)
+                              seed=seed, verbose=verbose, color=color, lora_params=lora_params, sae=sae,
+                              tokenizer_config_dir=tokenizer_config_dir)
 
     EOS_TOKEN_ID = 2
     completions = [decode(split_list(completion_tokens, EOS_TOKEN_ID)[0]) for completion_tokens in batch_prompts["completion_tokens"]]
@@ -462,7 +466,8 @@ def inference(
     verbose: bool = False,
     color: Optional[Tuple[int, int, int]] = None,
     lora_params: Optional[LoRA] = None,
-    tokenizer_config_dir: str = None,
+    sae = None,
+    tokenizer_config_dir: str = "./pixtral",
 ):
     # set up or disable logging
     log = lambda *args: None
@@ -488,7 +493,7 @@ def inference(
                 key, pixtral_params,
                 batch_prompts["tokens"], batch_prompts["processed_images"],
                 batch_prompts["image_start_indices"], batch_prompts["next_token_index"],
-                batch_prompts["padding_mask"], temp, lora_params=lora_params
+                batch_prompts["padding_mask"], temp, lora_params=lora_params, sae=sae
             )
             # pad kvcache to max token size (jax jit will require constant shapes)
             blocks, B, Hk, r, T, d = kvcache.K.shape        
@@ -506,7 +511,13 @@ def inference(
                 jit_start = time.time()
             elif i == 2:
                 token_generation_start = time.time()
-            next_token_batch, kvcache = inference_cached(key, pixtral_params, next_token_batch, kvcache, batch_prompts["next_token_index"], temp, lora_params=lora_params)
+            if sae is not None:
+                sae_layer = sae.layer
+            else:
+                sae_layer = None
+            next_token_batch, kvcache = inference_cached(key, pixtral_params,
+                                                         next_token_batch, kvcache, batch_prompts["next_token_index"], temp,
+                                                         lora_params=lora_params, sae=sae, sae_layer=sae_layer)
             batch_prompts["next_token_index"] = batch_prompts["next_token_index"] + 1 # broadcast
             if i == 1:
                 jit_end = time.time()

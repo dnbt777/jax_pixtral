@@ -24,6 +24,7 @@ from jax_pixtral.forward_common import (
     transformer_block
 )
 from jax_pixtral.forward_common import *
+from jax_pixtral.forward_training import MSE
 
 from typing import NamedTuple, List
 from jax_pixtral.model_types import *
@@ -37,6 +38,9 @@ from safetensors.flax import save_file, load_file
 class SparseAutoEncoder(NamedTuple):
     in_layer: jax.Array # one for each layer?? or..
     hidden_layer: jax.Array # one for each layer?? or..
+    bias_pre: jax.Array
+    bias_enc: jax.Array
+    bias_dec: jax.Array
 
 
 def init_sae(key, in_size, hidden_size, out_size):
@@ -45,6 +49,9 @@ def init_sae(key, in_size, hidden_size, out_size):
     return SparseAutoEncoder(
         in_layer=jrand.normal(in_key, (in_size, hidden_size), dtype=dtype)*dtype(jnp.sqrt(2.0/in_size)),
         hidden_layer=jrand.normal(hidden_key, (hidden_size, out_size), dtype=dtype)*dtype(jnp.sqrt(2.0/hidden_size)),
+        bias_pre=jnp.zeros((in_size,), dtype=dtype),
+        bias_enc=jnp.zeros((hidden_size,), dtype=dtype),
+        bias_dec=jnp.zeros((out_size,), dtype=dtype),
     )
 
 
@@ -178,8 +185,57 @@ def text_lora_loss_fn(
 # transformer_block(..., sae_vector=(precomputed vector here. add this to residual stream if layer==sae_layer), sae_layer=n)
 
 
+# do the full forward - encode and decode and get loss
+def old_sae_forward(sae_params, residual_activations, l1=1e-3):
+    # norm by mean over channel https://cdn.openai.com/papers/sparse-autoencoders.pdf
+    mean = jnp.mean(residual_activations, axis=-1, keepdims=True)
+    normalized = residual_activations - mean
+    encoded = jax.nn.relu(normalized @ sae_params.in_layer)
+    decoded = encoded @ sae_params.hidden_layer
+    reconstruction = MSE(decoded, normalized)
+    sparsity = l1*jnp.mean(jnp.abs(encoded))
+    return reconstruction + sparsity
 
 
+# do the full forward - encode and decode and get loss
+def sae_forward(sae_params, residual_activations, l1=1e-3):
+    # norm by mean over channel https://cdn.openai.com/papers/sparse-autoencoders.pdf
+    mean = jnp.mean(residual_activations, axis=-1, keepdims=True)
+    normalized = residual_activations - mean
+    encoded = jax.nn.relu((normalized - sae_params.bias_pre) @ sae_params.in_layer + sae_params.bias_enc)
+    decoded = encoded @ sae_params.hidden_layer + sae_params.bias_dec
+    reconstruction = MSE(decoded, normalized)
+    sparsity = l1*jnp.mean(jnp.abs(encoded))
+    return reconstruction + sparsity
+
+
+
+# get the activations in the SAE
+# used for finding features
+def sae_encode(sae_params, residual_activations):
+    mean = jnp.mean(residual_activations, axis=-1, keepdims=True) # i think this has to be learned and feature-wise
+    normalized = residual_activations - mean
+    encoded = jax.nn.relu((normalized - sae_params.bias_pre) @ sae_params.in_layer + sae_params.bias_enc)
+    return encoded # from here youd find the top_K
+
+def sae_decode(sae_params, encoded_activations):
+    return encoded_activations @ sae_params.hidden_layer + sae_params.bias_dec
+
+
+class SAE(NamedTuple):
+    sae_params: SparseAutoEncoder
+    concept_vector: jax.Array
+    layer: int
+
+
+
+
+def sae_intervention(sae, residual_activations):
+    activation_mean = jnp.mean(residual_activations, axis=-1, keepdims=True)
+    encoded_activations = sae_encode(sae.sae_params, residual_activations)
+    modified_activations = encoded_activations + sae.concept_vector # clamp in future. for now just add them ig
+    decoded_activations = sae_decode(sae.sae_params, modified_activations) + activation_mean
+    return decoded_activations
 
 
 
